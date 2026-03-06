@@ -5,10 +5,10 @@
     /* Typography: one font family across all backend screens */
     --sf-font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --sf-font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
-    /* Primary (actions, links, breadcrumbs, primary buttons) */
-    --sf-primary: #1e40af;
-    --sf-primary-hover: #1d4ed8;
-    --sf-primary-light: #dbeafe;
+    /* Primary (actions, links, breadcrumbs, primary buttons) – matches homepage #137fec */
+    --sf-primary: #137fec;
+    --sf-primary-hover: #0d6dd9;
+    --sf-primary-light: #d6ebfc;
     /* Secondary (neutral actions, cancel, secondary buttons) */
     --sf-secondary: #475569;
     --sf-secondary-hover: #64748b;
