@@ -15,6 +15,7 @@ use App\Models\UserRoleMapping;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CaseController extends Controller
 {
@@ -127,7 +128,7 @@ class CaseController extends Controller
             ->get();
 
         // 1. Get the Case
-        $case = CourtCase::with(['createdBy', 'modifiedBy', 'distributedBy'])->findOrFail($id);
+        $case = CourtCase::with(['createdBy', 'modifiedBy', 'distributedBy', 'distributionMethod'])->findOrFail($id);
 
         // 2. Get Case Users using JOINs (Case -> CaseUserMapping -> Users + Roles)
         $caseUsers = CaseUserMapping::select(
@@ -189,7 +190,53 @@ class CaseController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('backend.cases.create', compact('menus', 'role', 'caseTypes'));
+        $distributionMethods = $this->distributionMethods();
+
+        return view('backend.cases.create', compact('menus', 'role', 'caseTypes', 'distributionMethods'));
+    }
+
+    /**
+     * Distribution method options (data_element category_id = 15).
+     */
+    private function distributionMethods()
+    {
+        return DB::table('data_element')
+            ->where('category_id', 15)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['name', 'value', 'helper_text', 'sort_order']);
+    }
+
+    /**
+     * Validation rules for distribution fields on create/update.
+     */
+    private function distributionFieldRules(): array
+    {
+        return [
+            'distribution_sla_in_days' => 'nullable|integer|min:0',
+            'max_number_of_distribution_attempts' => 'required|integer|min:0',
+            'distribution_method' => [
+                'required',
+                'string',
+                Rule::exists('data_element', 'value')->where(function ($query) {
+                    $query->where('category_id', 15)->where('is_active', true);
+                }),
+            ],
+        ];
+    }
+
+    /**
+     * Map request distribution fields for persistence.
+     */
+    private function distributionAttributesFromRequest(Request $request): array
+    {
+        return [
+            'distribution_sla_in_days' => $request->filled('distribution_sla_in_days')
+                ? (int) $request->distribution_sla_in_days
+                : null,
+            'max_number_of_distribution_attempts' => (int) $request->max_number_of_distribution_attempts,
+            'distribution_method_value' => $request->distribution_method,
+        ];
     }
 
     /**
@@ -197,7 +244,7 @@ class CaseController extends Controller
      */
     public function store(Request $request)
     {
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), array_merge([
             'case_number'      => 'required|unique:cases,case_number',
             'case_type'        => 'required|exists:data_element,value',
             'case_description' => 'nullable|string',
@@ -211,7 +258,7 @@ class CaseController extends Controller
             'contacts.*.phone' => 'nullable|string|max:20',
             'contacts.*.user_id' => 'nullable|integer|exists:users,id',
             'contacts.*.role_id' => 'required|string|exists:data_element,value|not_in:DEL',
-        ]);
+        ], $this->distributionFieldRules()));
 
         $validator->after(function ($validator) use ($request) {
             if (!is_array($request->contacts)) {
@@ -248,7 +295,7 @@ class CaseController extends Controller
         try {
             DB::beginTransaction();
 
-            $case = CourtCase::create([
+            $case = CourtCase::create(array_merge([
                 'case_number'      => $request->case_number,
                 'case_type_value'  => $request->case_type,
                 'case_status_value' => 'C_NEW',
@@ -262,7 +309,7 @@ class CaseController extends Controller
                 'created_date'     => now(),
                 'modified_by'      => Auth::id(),
                 'last_modified_date' => now(),
-            ]);
+            ], $this->distributionAttributesFromRequest($request)));
 
             // Add the case creator as LEGAL_RE only if they did not explicitly add themselves as LEGAL_RE in contacts
             $creatorAlreadyLegalRe = collect($request->contacts)->contains(function ($c) {
@@ -394,7 +441,9 @@ class CaseController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('backend.cases.edit', compact('case', 'caseUsers', 'role', 'caseType'));
+        $distributionMethods = $this->distributionMethods();
+
+        return view('backend.cases.edit', compact('case', 'caseUsers', 'role', 'caseType', 'distributionMethods'));
     }
 
 
@@ -403,7 +452,7 @@ class CaseController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), array_merge([
             'case_number' => 'required|unique:cases,case_number,' . $id,
             'case_type' => 'required|max:255',
             'case_description' => 'nullable|string',
@@ -424,7 +473,7 @@ class CaseController extends Controller
             'users.*.user_id' => 'nullable|integer|exists:users,id',
             'users.*.mapping_id' => 'nullable|integer',
             'users.*.role' => 'required|string|exists:data_element,value|not_in:DEL',
-        ]);
+        ], $this->distributionFieldRules()));
 
         $validator->after(function ($validator) use ($request) {
             if (!is_array($request->users)) {
@@ -451,7 +500,7 @@ class CaseController extends Controller
 
             /** Update Parent Case */
             $case = CourtCase::findOrFail($id);
-            $case->update([
+            $case->update(array_merge([
                 'case_number' => $request->case_number,
                 'case_type_value' => $request->case_type,
                 'case_description' => $request->case_description,
@@ -466,7 +515,7 @@ class CaseController extends Controller
                 'legal_hold_end_date' => $request->filled('legal_hold_end_date') ? $request->legal_hold_end_date : null,
                 'modified_by' => Auth::id(),
                 'last_modified_date' => now(),
-            ]);
+            ], $this->distributionAttributesFromRequest($request)));
 
             /** Get submitted mapping IDs */
             $submittedMappingIds = collect($request->users)

@@ -67,6 +67,25 @@
                     <div class="cs-info-value">{{ $case->max_number_of_arbitation_per_user }}</div>
                 </div>
                 @endif
+                @if($case->distribution_sla_in_days !== null)
+                <div class="cs-info-row">
+                    <div class="cs-info-label">Distribution SLA (in days)</div>
+                    <div class="cs-info-value">{{ $case->distribution_sla_in_days }}</div>
+                </div>
+                @endif
+                <div class="cs-info-row">
+                    <div class="cs-info-label">Max number of distribution attempts</div>
+                    <div class="cs-info-value">{{ $case->max_number_of_distribution_attempts ?? 0 }}</div>
+                </div>
+                <div class="cs-info-row">
+                    <div class="cs-info-label">Preferred distribution method</div>
+                    <div class="cs-info-value">
+                        {{ $case->distributionMethod?->name ?? ($case->distribution_method_value ?: 'N/A') }}
+                        @if($case->distributionMethod && $case->distributionMethod->helper_text)
+                            <span class="cs-info-helper">{{ $case->distributionMethod->helper_text }}</span>
+                        @endif
+                    </div>
+                </div>
                 @if($case->total_items_count !== null)
                 <div class="cs-info-row">
                     <div class="cs-info-label">Total items count</div>

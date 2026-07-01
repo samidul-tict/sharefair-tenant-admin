@@ -82,6 +82,34 @@
                     </div>
                 </div>
 
+                <div class="cc-form-row">
+                    <div class="cc-form-group">
+                        <label for="distribution_sla_in_days">Distribution SLA (in days)</label>
+                        <input type="number" id="distribution_sla_in_days" name="distribution_sla_in_days" value="{{ old('distribution_sla_in_days') }}" placeholder="Enter number of days" min="0" step="1" inputmode="numeric" aria-describedby="distribution_sla_in_days-desc" aria-label="Distribution SLA in days">
+                        <span id="distribution_sla_in_days-desc" class="sr-only">Optional.</span>
+                    </div>
+                    <div class="cc-form-group">
+                        <label for="max_number_of_distribution_attempts">
+                            Max number of distribution attempts
+                            <span class="cc-required-asterisk" aria-hidden="true">*</span>
+                        </label>
+                        <input type="number" id="max_number_of_distribution_attempts" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', '0') }}" min="0" step="1" inputmode="numeric" required aria-required="true" aria-label="Max number of distribution attempts">
+                    </div>
+                    <div class="cc-form-group">
+                        <label for="distribution_method">
+                            Preferred distribution method
+                            <span class="cc-required-asterisk" aria-hidden="true">*</span>
+                        </label>
+                        <select id="distribution_method" name="distribution_method" required aria-required="true" aria-label="Preferred distribution method" aria-describedby="distribution_method_helper">
+                            <option value="">Select distribution method</option>
+                            @foreach ($distributionMethods as $method)
+                                <option value="{{ $method->value }}" data-helper-text="{{ e($method->helper_text ?? '') }}" {{ old('distribution_method') == $method->value ? 'selected' : '' }}>{{ $method->name }}</option>
+                            @endforeach
+                        </select>
+                        <p id="distribution_method_helper" class="cc-section-hint cc-field-hint" role="status" aria-live="polite" aria-hidden="true"></p>
+                    </div>
+                </div>
+
                 <div class="cc-form-group cc-form-group-full">
                     <label for="case_description">Case Description</label>
                     <textarea id="case_description" name="case_description" placeholder="Enter detailed case description..." aria-describedby="case_description-desc">{{ old('case_description') }}</textarea>
@@ -404,6 +432,22 @@ document.addEventListener('DOMContentLoaded', function() {
         updateRemoveButtonsCreate();
     });
 });
+
+(function() {
+    var select = document.getElementById('distribution_method');
+    var helper = document.getElementById('distribution_method_helper');
+    if (!select || !helper) return;
+    function updateDistributionHelper() {
+        var opt = select.options[select.selectedIndex];
+        var text = opt && opt.getAttribute('data-helper-text') ? opt.getAttribute('data-helper-text') : '';
+        helper.textContent = text;
+        var hasText = Boolean(text);
+        helper.style.display = hasText ? '' : 'none';
+        helper.setAttribute('aria-hidden', hasText ? 'false' : 'true');
+    }
+    select.addEventListener('change', updateDistributionHelper);
+    updateDistributionHelper();
+})();
 </script>
 @endpush
 @endsection

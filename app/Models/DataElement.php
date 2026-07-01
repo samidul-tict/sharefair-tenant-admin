@@ -19,6 +19,7 @@ class DataElement extends Model
         'value',
         'category_id',
         'sort_order',
+        'helper_text',
         'is_editable',
         'is_active',
     ];

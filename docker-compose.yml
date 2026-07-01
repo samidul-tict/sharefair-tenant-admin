@@ -1,0 +1,31 @@
+# Production compose file for the server.
+# Pulls the image built & pushed by GitHub Actions to GHCR.
+#
+# On the server:
+#   1. Put your production values in a `.env` file next to this compose file.
+#   2. `docker compose pull && docker compose up -d`
+#
+# Postgres is external/managed — set DB_* to point at it.
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/OWNER/REPO:latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      # Persist uploaded files and logs across deploys.
+      - storage-data:/var/www/html/storage/app
+      - storage-logs:/var/www/html/storage/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/up || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  storage-data:
+  storage-logs:

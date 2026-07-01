@@ -41,6 +41,9 @@ class CourtCase extends Model
         'sla_deadline',
         'asset_sla_in_days',
         'max_number_of_arbitation_per_user',
+        'distribution_sla_in_days',
+        'max_number_of_distribution_attempts',
+        'distribution_method_value',
     ];
 
     protected $casts = [
@@ -79,6 +82,11 @@ class CourtCase extends Model
     public function caseStatus()
     {
         return $this->belongsTo(DataElement::class, 'case_status_value', 'value');
+    }
+
+    public function distributionMethod()
+    {
+        return $this->belongsTo(DataElement::class, 'distribution_method_value', 'value');
     }
 
     public function caseUsers()
