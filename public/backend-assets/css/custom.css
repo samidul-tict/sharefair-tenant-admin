@@ -532,13 +532,6 @@ a.text-info:hover {
     margin-bottom: 0.25rem;
 }
 .case-show-modern .cs-info-value { font-size: 1rem; font-weight: 500; color: var(--cs-text); }
-.case-show-modern .cs-info-helper {
-    display: block;
-    margin-top: 0.25rem;
-    font-size: 0.875rem;
-    font-weight: 400;
-    color: var(--cs-text-secondary);
-}
 .case-show-modern .cs-user-card {
     background: var(--cs-bg);
     border-radius: 12px;

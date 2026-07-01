@@ -1,16 +1,18 @@
-# Docker Deployment (CI/CD via GitHub Actions)
+# Docker Deployment (CI via GitHub Actions)
 
 This app ships as a single Docker image (Nginx + PHP-FPM + Supervisor) built by
-GitHub Actions, pushed to **GitHub Container Registry (GHCR)**, and deployed to a
-server over SSH with `docker compose`. PostgreSQL is **external** (managed/separate host).
+GitHub Actions and pushed to **GitHub Container Registry (GHCR)**. Deployment to
+your server is **manual** — pull the image and run `docker compose up -d`.
+PostgreSQL is **external** (managed/separate host).
 
 ## Flow
 
 ```
 push to main ──▶ GitHub Actions
                    ├─ build multi-stage Docker image (Vite assets + Composer + PHP runtime)
-                   ├─ push to ghcr.io/<owner>/<repo>:latest and :sha-xxxxxxx
-                   └─ SSH into server ▶ docker compose pull ▶ up -d ▶ migrate (entrypoint)
+                   └─ push to ghcr.io/<owner>/<repo>:latest and :sha-xxxxxxx
+
+manual on server ──▶ docker compose pull ▶ up -d ▶ migrate (entrypoint)
 ```
 
 ## What runs inside the container
@@ -78,41 +80,34 @@ Put a reverse proxy (Nginx/Caddy/Traefik) in front for TLS, forwarding 443 →
 
 ## 2. GitHub repository secrets
 
-Add these under **Settings ▸ Secrets and variables ▸ Actions**:
+No deploy secrets are required for CI. `GITHUB_TOKEN` is provided automatically by
+Actions and is used to push to GHCR.
 
-| Secret | Description |
-| --- | --- |
-| `DEPLOY_HOST` | Server IP / hostname |
-| `DEPLOY_USER` | SSH user (must be in the `docker` group) |
-| `DEPLOY_PORT` | SSH port (usually `22`) |
-| `DEPLOY_SSH_KEY` | **Private** SSH key with access to the server |
-| `DEPLOY_PATH` | Directory containing `docker-compose.yml` (e.g. `/opt/sharefair`) |
-| `GHCR_TOKEN` | A GitHub PAT with `read:packages` (so the server can `docker login ghcr.io`). Only needed if the image/package is private. |
-
-`GITHUB_TOKEN` is provided automatically by Actions — no need to create it. It is
-used to push to GHCR.
-
-### Generate the deploy SSH key
+If the GHCR package is **private**, your server needs a PAT with `read:packages`
+to pull the image:
 
 ```bash
-ssh-keygen -t ed25519 -f deploy_key -C "github-actions"
-# Put the PUBLIC key on the server:
-ssh-copy-id -i deploy_key.pub <user>@<host>
-# Paste the PRIVATE key (deploy_key) into the DEPLOY_SSH_KEY secret.
+echo "<PAT>" | docker login ghcr.io -u <github-username> --password-stdin
 ```
 
 ---
 
-## 3. Deploy
+## 3. Deploy (manual)
 
-Just push to `main`:
+After a push to `main`, wait for the **Docker CI** workflow to finish, then on
+the server:
 
 ```bash
-git push origin main
+cd /opt/sharefair   # or your DEPLOY_PATH
+docker compose pull
+docker compose up -d --remove-orphans
 ```
 
-GitHub Actions will build, push, and redeploy automatically. You can also trigger
-it manually from the **Actions** tab (workflow_dispatch).
+You can pin a specific build with the commit tag, e.g.
+`ghcr.io/samidul-tict/sharefair-tenant-admin:sha-abc1234`.
+
+You can also trigger a new image build manually from the **Actions** tab
+(workflow_dispatch).
 
 ---
 

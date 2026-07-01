@@ -79,12 +79,7 @@
                 </div>
                 <div class="cs-info-row">
                     <div class="cs-info-label">Preferred distribution method</div>
-                    <div class="cs-info-value">
-                        {{ $case->distributionMethod?->name ?? ($case->distribution_method_value ?: 'N/A') }}
-                        @if($case->distributionMethod && $case->distributionMethod->helper_text)
-                            <span class="cs-info-helper">{{ $case->distributionMethod->helper_text }}</span>
-                        @endif
-                    </div>
+                    <div class="cs-info-value">{{ $case->distributionMethod?->name ?? ($case->distribution_method_value ?: 'N/A') }}</div>
                 </div>
                 @if($case->total_items_count !== null)
                 <div class="cs-info-row">
