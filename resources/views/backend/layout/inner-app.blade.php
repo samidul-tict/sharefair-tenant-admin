@@ -29,13 +29,6 @@
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="loader" aria-hidden="true"></div>
 <div id="app">
-    @php
-        // Check loggedin user and their role/tenant
-        $logUser =  \App\Models\User::leftJoin('user_role_mapping as urm', 'users.id', '=', 'urm.user_id')
-            ->where('users.id', Auth::id())
-            ->select('users.*', 'urm.role_value as user_role_id', 'urm.tenant_id')
-            ->first();
-    @endphp
     <div class="main-wrapper main-wrapper-1">
     <div class="navbar-bg" aria-hidden="true"></div>
     <nav class="navbar navbar-expand-lg main-navbar sticky" aria-label="Primary navigation">
@@ -144,37 +137,6 @@
                     <span class="logo-name">Share Fair</span>
                 </a>
             </div>
-            @php
-                $menus = [];
-
-                if ($logUser->user_role_id == 'TENANT_A') {
-
-                    // Super Admin / Full Access
-                    $menus = \App\Models\Menu::select('menu.*')
-                        ->where('menu.is_active', true)
-                        ->where('menu.admin_type', 'TA')
-                        ->orderBy('menu.sort_order', 'ASC')
-                        ->get();
-
-                } else {
-
-                    // Normal User — Load menu only if any permission exists
-                    $menus = \App\Models\Menu::select('menu.*', 'mp.can_view', 'mp.can_create', 'mp.can_edit', 'mp.can_delete')
-                        ->join('menu_permission as mp', 'menu.id', '=', 'mp.menu_id')
-                        ->where('mp.user_id', $logUser->id)
-                        ->where('menu.is_active', true)
-                        ->where('menu.admin_type', 'TA')
-                        ->where(function($q){
-                            $q->where('mp.can_view', true)
-                            ->orWhere('mp.can_create', true)
-                            ->orWhere('mp.can_edit', true)
-                            ->orWhere('mp.can_delete', true);
-                        })
-                        ->orderBy('menu.sort_order', 'ASC')
-                        ->get();
-                }
-            @endphp
-
             <ul class="sidebar-menu" role="navigation" aria-label="Main menu">
                 @foreach($menus as $menu)
                     @if ($menu->parent_id == null)

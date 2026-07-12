@@ -21,6 +21,7 @@ class CaseUserMapping extends Model
         'allocated_item_count',
         'allocated_value',
         'value_difference',
+        'distribution_value_cap',
         'is_active',
         'created_by',
         'created_date',

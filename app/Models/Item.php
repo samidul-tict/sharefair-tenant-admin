@@ -20,22 +20,30 @@ class Item extends Model
         'name',
         'quantity',
         'description',
+        'location_id',
         'category',
-        'sub_category',
+        'other_category',
         'condition',
-        'location',
-        'is_marital_asset',
         'notes',
         'tags',
         'images',
         'links',
         'brand',
+        'other_brand',
         'model',
         'serial_number',
-        'purchase_date',
+        'purchase_year',
         'purchase_price',
-        'sale_date',
-        'sale_price',
+        'estimated_value',
+        'concluded_price',
+        'accessories_status_value',
+        'has_original_packaging',
+        'has_valid_warranty',
+        'is_marital_asset',
+        'assigned_to_user_id',
+        'assigned_reason',
+        'status',
+        'sla_deadline',
         'is_active',
         'created_by',
         'created_date',
@@ -44,12 +52,15 @@ class Item extends Model
     ];
 
     protected $casts = [
-        'purchase_date' => 'date',
-        'sale_date'     => 'date',
+        'purchase_year' => 'integer',
         'is_marital_asset' => 'boolean',
+        'has_original_packaging' => 'boolean',
+        'has_valid_warranty' => 'boolean',
         'is_active' => 'boolean',
         'purchase_price' => 'decimal:2',
-        'sale_price' => 'decimal:2',
+        'estimated_value' => 'decimal:2',
+        'concluded_price' => 'decimal:2',
+        'sla_deadline' => 'date',
         'created_date' => 'datetime',
         'last_modified_date' => 'datetime',
     ];
@@ -72,5 +83,15 @@ class Item extends Model
     public function modifiedBy()
     {
         return $this->belongsTo(User::class, 'modified_by');
+    }
+
+    public function location()
+    {
+        return $this->belongsTo(AssociatedLocation::class, 'location_id');
+    }
+
+    public function assignedToUser()
+    {
+        return $this->belongsTo(User::class, 'assigned_to_user_id');
     }
 }

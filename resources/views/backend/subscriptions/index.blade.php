@@ -18,7 +18,7 @@
                 <span class="breadcrumb-current">My Subscriptions</span>
             </nav>
         </div>
-        @if(hasPermission('subscriptions', 'create') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A') || true) 
+        @if(hasPermission('subscriptions', 'create') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A')) 
         {{-- Permission check skipped for demo or assuming tenant admin has access --}}
         <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#addSubscriptionModal">
             <i class="fas fa-plus"></i> Add New Subscription

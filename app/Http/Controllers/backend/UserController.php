@@ -194,10 +194,9 @@ class UserController extends Controller
 
         } catch (\Throwable $e) {
 
-            DB::rollBack(); // rollback all changes
-            dd($e->getMessage());
-            
-            return back()->with('error', 'Something went wrong.')->withInput();
+            DB::rollBack();
+
+            return back()->with('error', 'Something went wrong. Please try again.')->withInput();
         }
     }
 
@@ -212,10 +211,6 @@ class UserController extends Controller
                     ->get();
 
         // existing permissions
-        $existingPermissions = MenuPermission::where('user_id', $id)
-                                ->pluck('can_view', 'menu_id')
-                                ->toArray();
-
         $existingPermissionsFull = MenuPermission::where('user_id', $id)
                                 ->get()
                                 ->keyBy('menu_id');
@@ -273,8 +268,7 @@ class UserController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            dd($e->getMessage());
-            return back()->with('error', 'Something went wrong.')->withInput();
+            return back()->with('error', 'Something went wrong. Please try again.')->withInput();
         }
     }
     public function show($id)
@@ -384,15 +378,30 @@ class UserController extends Controller
             if (strlen($q) < 2) {
                 return response()->json([])->header('Content-Type', 'application/json');
             }
+
+            $logUser = User::leftJoin('user_role_mapping as urm', 'users.id', '=', 'urm.user_id')
+                ->where('users.id', Auth::id())
+                ->select('users.*', 'urm.role_value as user_role_id', 'urm.tenant_id')
+                ->first();
+
+            if (!$logUser || !$logUser->tenant_id) {
+                return response()->json([])->header('Content-Type', 'application/json');
+            }
+
             $term = '%' . $q . '%';
-            $users = User::select('id', 'name', 'email', 'phone_number')
+            $users = User::select('users.id', 'users.name', 'users.email', 'users.phone_number')
+                ->join('user_role_mapping as urm', 'users.id', '=', 'urm.user_id')
+                ->where('urm.tenant_id', $logUser->tenant_id)
+                ->where('urm.is_active', true)
+                ->whereIn('urm.role_value', ['EMP', 'LEGAL_RE', 'TENANT_A'])
                 ->where(function ($query) use ($term) {
-                    $query->where('name', 'LIKE', $term)
-                        ->orWhere('email', 'LIKE', $term);
+                    $query->where('users.name', 'ILIKE', $term)
+                        ->orWhere('users.email', 'ILIKE', $term);
                 })
-                ->orderBy('name')
+                ->orderBy('users.name')
                 ->limit(25)
                 ->get();
+
             return response()->json($users)->header('Content-Type', 'application/json');
         } catch (\Throwable $e) {
             \Log::warning('User search failed: ' . $e->getMessage());

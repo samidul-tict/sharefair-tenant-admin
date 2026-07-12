@@ -5,18 +5,14 @@ namespace App\Http\Controllers\backend;
 use App\Http\Controllers\Controller;
 use App\Models\CourtCase;
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
+use App\Support\AdminContext;
 use Illuminate\Support\Facades\DB;
 
 class DefaultController extends Controller
 {
     public function dashboard()
     {
-        $logUser = User::leftJoin('user_role_mapping as urm', 'users.id', '=', 'urm.user_id')
-            ->where('users.id', Auth::id())
-            ->select('users.*', 'urm.role_value as user_role_id', 'urm.tenant_id')
-            ->first();
-
+        $logUser = AdminContext::logUser();
         $tenantId = $logUser->tenant_id ?? null;
 
         $caseCount = 0;
@@ -28,13 +24,15 @@ class DefaultController extends Controller
         $slaData = [0, 0, 0, 0];
 
         if ($tenantId) {
-            $tenantUserIds = User::whereHas('userRoleMappings', function ($q) use ($tenantId) {
-                $q->where('tenant_id', $tenantId);
-            })->pluck('id');
-
-            $tenantCaseIds = CourtCase::whereHas('caseUsers', function ($q) use ($tenantUserIds) {
-                $q->where('role_value', 'LEGAL_RE')->whereIn('user_id', $tenantUserIds);
-            })->pluck('id');
+            $tenantCaseIds = CourtCase::query()
+                ->join('case_user_mapping as cum', 'cases.id', '=', 'cum.case_id')
+                ->join('user_role_mapping as urm', function ($join) use ($tenantId) {
+                    $join->on('cum.user_id', '=', 'urm.user_id')
+                        ->where('urm.tenant_id', $tenantId);
+                })
+                ->where('cum.role_value', 'LEGAL_RE')
+                ->distinct()
+                ->pluck('cases.id');
 
             $caseCount = $tenantCaseIds->count();
 
@@ -68,37 +66,24 @@ class DefaultController extends Controller
                     $caseStatusData[] = (int) $total;
                 }
 
-                // SLA / deadline: deadline passed, due in 7 days, due in a month, on track
                 $now = now();
                 $in7Days = $now->copy()->addDays(7);
                 $in30Days = $now->copy()->addDays(30);
 
-                $deadlinePassed = CourtCase::whereIn('id', $tenantCaseIds)
-                    ->whereNotNull('sla_deadline')
-                    ->where('sla_deadline', '<', $now)
-                    ->count();
-                $dueIn7Days = CourtCase::whereIn('id', $tenantCaseIds)
-                    ->whereNotNull('sla_deadline')
-                    ->where('sla_deadline', '>=', $now)
-                    ->where('sla_deadline', '<=', $in7Days)
-                    ->count();
-                $dueInMonth = CourtCase::whereIn('id', $tenantCaseIds)
-                    ->whereNotNull('sla_deadline')
-                    ->where('sla_deadline', '>', $in7Days)
-                    ->where('sla_deadline', '<=', $in30Days)
-                    ->count();
-                $onTrack = CourtCase::whereIn('id', $tenantCaseIds)
-                    ->where(function ($q) use ($now, $in30Days) {
-                        $q->whereNull('sla_deadline')
-                            ->orWhere('sla_deadline', '>', $in30Days);
-                    })
-                    ->count();
+                $slaRow = CourtCase::whereIn('id', $tenantCaseIds)
+                    ->selectRaw('
+                        SUM(CASE WHEN sla_deadline IS NOT NULL AND sla_deadline < ? THEN 1 ELSE 0 END) AS deadline_passed,
+                        SUM(CASE WHEN sla_deadline IS NOT NULL AND sla_deadline >= ? AND sla_deadline <= ? THEN 1 ELSE 0 END) AS due_in_7_days,
+                        SUM(CASE WHEN sla_deadline IS NOT NULL AND sla_deadline > ? AND sla_deadline <= ? THEN 1 ELSE 0 END) AS due_in_month,
+                        SUM(CASE WHEN sla_deadline IS NULL OR sla_deadline > ? THEN 1 ELSE 0 END) AS on_track
+                    ', [$now, $now, $in7Days, $in7Days, $in30Days, $in30Days])
+                    ->first();
 
                 $slaData = [
-                    (int) $deadlinePassed,
-                    (int) $dueIn7Days,
-                    (int) $dueInMonth,
-                    (int) $onTrack,
+                    (int) ($slaRow->deadline_passed ?? 0),
+                    (int) ($slaRow->due_in_7_days ?? 0),
+                    (int) ($slaRow->due_in_month ?? 0),
+                    (int) ($slaRow->on_track ?? 0),
                 ];
             }
         }

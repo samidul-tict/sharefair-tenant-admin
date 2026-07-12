@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Support\AdminContext;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -23,5 +25,10 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
         }
+
+        View::composer('backend.layout.inner-app', function ($view) {
+            $view->with('logUser', AdminContext::logUser());
+            $view->with('menus', AdminContext::menus());
+        });
     }
 }

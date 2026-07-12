@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'sharefair' => [
+        'api_base_url' => env('SHAREFAIR_API_BASE_URL', 'http://127.0.0.1:8002/api/v1'),
+        'timeout' => (int) env('SHAREFAIR_API_TIMEOUT', 15),
+        'retry_times' => (int) env('SHAREFAIR_API_RETRY_TIMES', 2),
+        'retry_sleep_ms' => (int) env('SHAREFAIR_API_RETRY_SLEEP_MS', 200),
+        'preview_cache_seconds' => (int) env('SHAREFAIR_PREVIEW_CACHE_SECONDS', 60),
+    ],
+
 ];

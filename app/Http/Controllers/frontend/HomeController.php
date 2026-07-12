@@ -31,4 +31,9 @@ class HomeController extends Controller
     public function noticeOfPractices(){
         return view('frontend.site.notice-of-practices');
     }
+
+    public function storyShow(string $story)
+    {
+        return redirect()->route('home.index');
+    }
 }

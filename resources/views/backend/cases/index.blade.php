@@ -78,24 +78,24 @@
             <tbody>
                 @forelse ($cases as $index => $case)
                     @php
-                        $caseStatus = \DB::table('data_element')->where('value', $case->case_status_value)->first();
                         $statusClass = 'status-new';
-                        if ($caseStatus) {
-                            $sn = strtolower($caseStatus->name ?? '');
-                            if (str_contains($sn, 'pending') || str_contains($sn, 'approval')) $statusClass = 'status-pending';
+                        $statusName = $case->caseStatus?->name ?? $case->case_status_value;
+                        $sn = strtolower($statusName ?? '');
+                        if (str_contains($sn, 'pending') || str_contains($sn, 'approval')) {
+                            $statusClass = 'status-pending';
                         }
                     @endphp
-                    <tr>
+                    <tr data-case-status="{{ $case->case_status_value ?? '' }}">
                         <td class="row-number">{{ $cases->firstItem() + $index }}</td>
                         <td>
                             <a href="{{ route('admin.cases.show', ['id' => $case->id]) }}" class="case-number">{{ $case->case_number }}</a>
                         </td>
-                        <td class="case-type">{{ $case->case_type_value }}</td>
+                        <td class="case-type">{{ $case->caseType?->name ?? $case->case_type_value }}</td>
                         <td>
-                            @if($caseStatus)
+                            @if($case->caseStatus)
                                 <span class="status-badge {{ $statusClass }}">
                                     <span class="status-dot" aria-hidden="true"></span>
-                                    {{ $caseStatus->name }}
+                                    {{ $case->caseStatus->name }}
                                 </span>
                             @else
                                 <span class="status-badge status-new">{{ $case->case_status_value }}</span>
@@ -112,6 +112,11 @@
                         <td class="date">{{ \Carbon\Carbon::parse($case->created_date)->format('d-M-Y') }}</td>
                         <td>
                             <div class="actions actions-icons">
+                                @if(($case->hasDistributionSummary()) && (hasPermission('cases', 'edit') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A')))
+                                <a href="{{ route('admin.cases.distribute.review', $case->id) }}" class="btn-action-icon btn-distribute" title="{{ $case->canLegalRepresentativeDistribute() ? 'Distribute assets' : 'Distribution summary' }}" aria-label="{{ $case->canLegalRepresentativeDistribute() ? 'Distribute assets for case' : 'View distribution summary for case' }} {{ $case->case_number }}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22V8"/><path d="m21 3-9 9"/><path d="M3 3l9 9"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                                </a>
+                                @endif
                                 @if(hasPermission('cases', 'edit') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A'))
                                 <a href="{{ route('admin.cases.edit', $case->id) }}" class="btn-action-icon btn-edit" title="Edit case" aria-label="Edit case {{ $case->case_number }}">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -201,7 +206,8 @@ document.addEventListener('DOMContentLoaded', function() {
             var legalHold = (row.querySelector('.legal-hold-yes, .legal-hold-no') || row.cells[4]).textContent.toLowerCase();
 
             var matchSearch = !searchTerm || caseNum.includes(searchTerm) || caseType.includes(searchTerm) || status.includes(searchTerm) || creator.includes(searchTerm) || legalHold.includes(searchTerm);
-            var matchStatus = !statusVal || status.includes(statusVal) || (statusVal && status.includes(statusVal.replace(/\s/g, '')));
+            var rowStatus = (row.getAttribute('data-case-status') || '').toLowerCase();
+            var matchStatus = !statusVal || rowStatus === statusVal;
             row.style.display = (matchSearch && matchStatus) ? '' : 'none';
         });
     }

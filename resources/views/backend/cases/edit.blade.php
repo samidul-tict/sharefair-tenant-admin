@@ -79,7 +79,7 @@
                             Max number of arbitration allowed per user
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="max_number_of_arbitation_per_user" name="max_number_of_arbitation_per_user" value="{{ old('max_number_of_arbitation_per_user', $case->max_number_of_arbitation_per_user) }}" min="0" step="1" required aria-required="true" aria-label="Max number of arbitration allowed per user">
+                        <input type="number" id="max_number_of_arbitation_per_user" name="max_number_of_arbitation_per_user" value="{{ old('max_number_of_arbitation_per_user', $case->max_number_of_arbitation_per_user) }}" placeholder="Enter max arbitration allowed" min="0" step="1" required aria-required="true" aria-label="Max number of arbitration allowed per user">
                     </div>
                 </div>
 
@@ -94,7 +94,7 @@
                             Max number of distribution attempts
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="max_number_of_distribution_attempts" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', $case->max_number_of_distribution_attempts ?? 0) }}" min="0" step="1" inputmode="numeric" required aria-required="true" aria-label="Max number of distribution attempts">
+                        <input type="number" id="max_number_of_distribution_attempts" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', $case->max_number_of_distribution_attempts) }}" placeholder="Enter max distribution attempts" min="0" step="1" inputmode="numeric" required aria-required="true" aria-label="Max number of distribution attempts">
                     </div>
                     <div class="cc-form-group">
                         <label for="distribution_method">
@@ -108,6 +108,30 @@
                             @endforeach
                         </select>
                         <p id="distribution_method_helper" class="cc-section-hint cc-field-hint" role="status" aria-live="polite" aria-hidden="true"></p>
+                    </div>
+                </div>
+
+                <div class="cc-form-row">
+                    <div class="cc-form-group cc-form-group-full">
+                        <fieldset>
+                            <legend>
+                                Asset will be distributed by
+                                <span class="cc-required-asterisk" aria-hidden="true">*</span>
+                            </legend>
+                            @php
+                                $assetDistributedBy = old('asset_distributed_by', ($case->distribute_by_client ?? false) ? 'client' : 'legal_representative');
+                            @endphp
+                            <div class="cc-radio-group" role="radiogroup" aria-label="Asset will be distributed by">
+                                <label class="cc-radio-label">
+                                    <input type="radio" name="asset_distributed_by" value="client" {{ $assetDistributedBy === 'client' ? 'checked' : '' }} required aria-required="true">
+                                    Client
+                                </label>
+                                <label class="cc-radio-label">
+                                    <input type="radio" name="asset_distributed_by" value="legal_representative" {{ $assetDistributedBy === 'legal_representative' ? 'checked' : '' }} required aria-required="true">
+                                    Legal Representative
+                                </label>
+                            </div>
+                        </fieldset>
                     </div>
                 </div>
 
@@ -193,6 +217,10 @@
                                             @endforeach
                                         </select>
                                     </div>
+                                    <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
+                                        <label for="users_{{ $i }}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
+                                        <input type="number" id="users_{{ $i }}_distribution_value_cap" name="users[{{ $i }}][distribution_value_cap]" value="{{ $r['distribution_value_cap'] ?? '' }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap">
+                                    </div>
                                     <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="{{ $r['role'] ?? '' }}">
                                         <label class="cc-label-invisible">&nbsp;</label>
                                         @if((isset($r['role']) && $r['role'] !== 'PL' && $r['role'] !== 'DEF'))
@@ -241,6 +269,10 @@
                                             @endforeach
                                         </select>
                                     </div>
+                                    <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
+                                        <label for="users_{{ $idx }}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
+                                        <input type="number" id="users_{{ $idx }}_distribution_value_cap" name="users[{{ $idx }}][distribution_value_cap]" value="{{ old("users.$idx.distribution_value_cap", $mapping->distribution_value_cap) }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap">
+                                    </div>
                                     <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="{{ $selectedRole }}">
                                         <label class="cc-label-invisible">&nbsp;</label>
                                         @if(!$isPlDef)
@@ -277,6 +309,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const addBtn = document.getElementById('addUserRowBtn');
     const PL = 'PL';
     const DEF = 'DEF';
+
+    function updateDistributionValueCaps() {
+        const methodSelect = document.getElementById('distribution_method');
+        const requiresCap = methodSelect && (methodSelect.value === 'DIST_FCP' || methodSelect.value === 'DIST_CAP');
+
+        wrapper.querySelectorAll('.user-row').forEach(function(row) {
+            const roleSelect = row.querySelector('select[name*="[role]"]');
+            const capField = row.querySelector('[data-distribution-cap-field]');
+            const capInput = capField && capField.querySelector('input[name*="[distribution_value_cap]"]');
+            const isClientOrSpouse = roleSelect && (roleSelect.value === PL || roleSelect.value === DEF);
+            const show = Boolean(requiresCap && isClientOrSpouse);
+
+            if (capField) capField.hidden = !show;
+            if (capInput) {
+                capInput.required = show;
+                capInput.setAttribute('aria-required', show ? 'true' : 'false');
+            }
+        });
+    }
 
     function toggleLegalHoldFields() {
         var toggle = document.getElementById('is_legal_hold');
@@ -339,11 +390,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     applyPlaintiffDefendantLimits();
     if (typeof updateRemoveButtons === 'function') updateRemoveButtons();
+    updateDistributionValueCaps();
+
+    const distributionMethodSelect = document.getElementById('distribution_method');
+    if (distributionMethodSelect) {
+        distributionMethodSelect.addEventListener('change', updateDistributionValueCaps);
+    }
 
     wrapper.addEventListener('change', function(e) {
         if (e.target && e.target.matches('select[name*="[role]"]')) {
             applyPlaintiffDefendantLimits();
             updateRemoveButtons();
+            updateDistributionValueCaps();
         }
     });
 
@@ -460,6 +518,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             @endforeach
                         </select>
                     </div>
+                    <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
+                        <label for="users_${idx}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
+                        <input type="number" id="users_${idx}_distribution_value_cap" name="users[${idx}][distribution_value_cap]" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap">
+                    </div>
                     <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="">
                         <label class="cc-label-invisible">&nbsp;</label>
                         <span class="cc-no-remove-hint" style="display:none" aria-hidden="true">—</span>
@@ -472,6 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
             wrapper.appendChild(row);
             applyPlaintiffDefendantLimits();
             updateRemoveButtons();
+            updateDistributionValueCaps();
         });
     }
 

@@ -44,11 +44,13 @@ class CourtCase extends Model
         'distribution_sla_in_days',
         'max_number_of_distribution_attempts',
         'distribution_method_value',
+        'distribute_by_client',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'is_legal_hold' => 'boolean',
+        'distribute_by_client' => 'boolean',
         'legal_hold_start_date' => 'date',
         'legal_hold_end_date' => 'date',
         'distribution_date' => 'datetime',
@@ -92,5 +94,33 @@ class CourtCase extends Model
     public function caseUsers()
     {
         return $this->hasMany(CaseUserMapping::class, 'case_id');
+    }
+
+    /**
+     * Case statuses that have a distribution summary (preview or completed).
+     */
+    public const DISTRIBUTION_SUMMARY_STATUSES = [
+        'PEND_DIS',
+        'PEND_APP',
+        'PEND_CLS',
+        'RES_COMP',
+    ];
+
+    /**
+     * Whether the distribution summary page should be available for this case.
+     */
+    public function hasDistributionSummary(): bool
+    {
+        return in_array($this->case_status_value, self::DISTRIBUTION_SUMMARY_STATUSES, true);
+    }
+
+    /**
+     * Legal representative may run distribution when status is pending distribution
+     * and assets are not distributed by the client.
+     */
+    public function canLegalRepresentativeDistribute(): bool
+    {
+        return $this->case_status_value === 'PEND_DIS'
+            && !($this->distribute_by_client === true);
     }
 }

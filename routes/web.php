@@ -4,13 +4,7 @@ use App\Http\Controllers\backend\AuthController;
 use App\Http\Controllers\frontend\HomeController;
 
 use App\Http\Controllers\backend\DefaultController as AdminDefaultController;
-use App\Http\Controllers\backend\TenantController as AdminTenantController;
 use App\Http\Controllers\backend\UserController as AdminUserController;
-use App\Http\Controllers\backend\CouponController as AdminCouponController;
-use App\Http\Controllers\backend\PlanController as AdminPlanController;
-use App\Http\Controllers\backend\RoleController as AdminRoleController;
-use App\Http\Controllers\backend\CountryController as AdminCountryController;
-use App\Http\Controllers\backend\StateController as AdminStateController;
 use App\Http\Controllers\backend\CaseController as AdminCaseController;
 use App\Http\Controllers\backend\ProfileController as AdminProfileController;
 use App\Http\Controllers\backend\SubscriptionController as AdminSubscriptionController;
@@ -60,6 +54,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/admin/cases', [AdminCaseController::class, 'index'])->name('admin.cases.index');
     Route::get('/admin/cases/create', [AdminCaseController::class, 'create'])->name('admin.cases.create');
     Route::post('/admin/cases', [AdminCaseController::class, 'store'])->name('admin.cases.store');
+    Route::get('/admin/cases/{id}/distribute', [AdminCaseController::class, 'distributeReview'])->name('admin.cases.distribute.review');
+    Route::get('/admin/cases/{id}/distribute/download', [AdminCaseController::class, 'distributeDownload'])->name('admin.cases.distribute.download');
+    Route::post('/admin/cases/{id}/distribute/email', [AdminCaseController::class, 'distributeEmail'])->name('admin.cases.distribute.email');
+    Route::get('/admin/cases/{id}/distribute/preview', [AdminCaseController::class, 'distributePreview'])->name('admin.cases.distribute.preview');
+    Route::post('/admin/cases/{id}/distribute', [AdminCaseController::class, 'distribute'])->name('admin.cases.distribute');
+    Route::get('/admin/cases/{id}/assets', [AdminCaseController::class, 'listAssets'])->name('admin.cases.assets.list');
     Route::get('/admin/cases/{id}', [AdminCaseController::class, 'show'])->name('admin.cases.show');
     Route::get('/admin/cases/{id}/edit', [AdminCaseController::class, 'edit'])->name('admin.cases.edit');
     Route::put('/admin/cases/{id}', [AdminCaseController::class, 'update'])->name('admin.cases.update');
