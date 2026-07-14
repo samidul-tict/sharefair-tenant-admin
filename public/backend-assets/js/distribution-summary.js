@@ -509,15 +509,41 @@
             });
         }
 
+        function syncAllocationSummaryTotals(d) {
+            var target = Number(d.target_value_per_user || 0);
+            var maritalCount = 0;
+            var maritalValue = 0;
+            Object.keys(d.allocations || {}).forEach(function (key) {
+                var alloc = d.allocations[key] || {};
+                var items = alloc.items || [];
+                var received = items.reduce(function (sum, item) {
+                    return sum + itemPriceNum(item);
+                }, Number(alloc.carry_forward_value || 0));
+                received = Math.round(received * 100) / 100;
+                alloc.allocated_item_count = items.length;
+                alloc.allocated_value = received;
+                alloc.value_difference = Math.round((received - target) * 100) / 100;
+                maritalCount += items.length;
+                maritalValue += received;
+            });
+            d.item_count = maritalCount;
+            d.total_value = Math.round(maritalValue * 100) / 100;
+            d.total_marital_assets_count = maritalCount;
+            d.total_marital_assets_value = d.total_value;
+            return d;
+        }
+
         function renderDistributionSummary(d) {
-            currentData = cloneData(d);
-            if (statsEl) statsEl.innerHTML = renderSummaryStats(d, canConfirm);
-            updateTabCounts(d);
-            renderPanels(d);
+            currentData = cloneData(syncAllocationSummaryTotals(d || {}));
+            if (statsEl) statsEl.innerHTML = renderSummaryStats(currentData, canConfirm);
+            updateTabCounts(currentData);
+            renderPanels(currentData);
             bindItemToggles();
 
             var defaultTab =
-                canConfirm && (d.dont_want_items || []).length > 0 ? 'dont_want' : 'allocations';
+                canConfirm && (currentData.dont_want_items || []).length > 0
+                    ? 'dont_want'
+                    : 'allocations';
             setDistTab(defaultTab);
 
             if (summaryRoot) summaryRoot.hidden = false;
@@ -536,10 +562,19 @@
 
         function availablePoolItems(d) {
             var assignedIds = {};
+            // Party-held PEND_DST stay out of Available; IDs already in adjust_available
+            // are moved into the pool (e.g. DST_REJ).
+            var poolPreferred = {};
+            (d.adjust_available_items || []).forEach(function (item) {
+                var id = Number(item.id || item.item_id || 0);
+                if (id) poolPreferred[id] = true;
+            });
+
             Object.keys(d.allocations || {}).forEach(function (key) {
                 ((d.allocations[key] || {}).items || []).forEach(function (item) {
                     var id = Number(item.id || item.item_id || 0);
-                    if (id) assignedIds[id] = true;
+                    if (!id || poolPreferred[id]) return;
+                    assignedIds[id] = true;
                 });
             });
 
@@ -556,13 +591,14 @@
                 });
             }
 
-            // Don't Want (NONE_WNT) and other marital leftovers not held by a party.
+            pushPool(d.adjust_available_items);
             pushPool(d.dont_want_items);
             pushPool(d.unassigned_items);
             return pool;
         }
 
-        function participantBuckets(allocations) {
+        function participantBuckets(allocations, poolIds) {
+            poolIds = poolIds || {};
             return Object.keys(allocations || {}).map(function (key) {
                 var alloc = allocations[key] || {};
                 return {
@@ -570,7 +606,10 @@
                     user_id: Number(alloc.user_id || 0),
                     user_name: alloc.user_name || alloc.user_email || 'User',
                     user_role: (alloc.user_role || '').toUpperCase(),
-                    items: (alloc.items || []).slice(),
+                    items: (alloc.items || []).filter(function (item) {
+                        var id = Number(item.id || item.item_id || 0);
+                        return !id || !poolIds[id];
+                    }),
                     carry_forward_value: alloc.carry_forward_value || 0,
                 };
             }).filter(function (bucket) {
@@ -848,8 +887,13 @@
 
         function openAdjustMode() {
             if (!canAdjust || !currentData || !adjustRoot) return;
-            var parties = participantBuckets(currentData.allocations || {});
             var poolItems = availablePoolItems(currentData);
+            var poolIds = {};
+            poolItems.forEach(function (item) {
+                var id = Number(item.id || item.item_id || 0);
+                if (id) poolIds[id] = true;
+            });
+            var parties = participantBuckets(currentData.allocations || {}, poolIds);
             adjustState = {
                 target: Number(currentData.target_value_per_user || 0),
                 buckets: parties.concat([
@@ -857,7 +901,7 @@
                         key: '__pool__',
                         user_id: 0,
                         user_name: 'Available marital assets',
-                        user_role: 'Don’t Want / unassigned',
+                        user_role: 'In-progress / rejected / other',
                         items: poolItems,
                         carry_forward_value: 0,
                         isPool: true,
@@ -910,6 +954,7 @@
                 var reason = String(item.allocation_reason || '').toLowerCase();
                 return reason.indexOf("don't want") === -1 && reason.indexOf('dont want') === -1;
             });
+            next.adjust_available_items = poolItems.slice();
             pendingAssignments = buildAssignmentsFromAllocations(next.allocations);
 
             var applyBtn = rootEl.querySelector('[data-dist-adjust-apply]');
@@ -1093,9 +1138,11 @@
         wraps.forEach(function (wrap) {
             var toggle = wrap.querySelector('[data-dist-download-toggle], .cs-dist-download-toggle');
             var menu = wrap.querySelector('[data-dist-download-menu], .cs-dist-download-menu');
-            if (!toggle || !menu) return;
+            if (!toggle || !menu || toggle.getAttribute('data-dist-download-bound') === '1') return;
+            toggle.setAttribute('data-dist-download-bound', '1');
 
             toggle.addEventListener('click', function (e) {
+                e.preventDefault();
                 e.stopPropagation();
                 var willOpen = menu.hidden;
                 closeAll(wrap);
@@ -1103,15 +1150,35 @@
                 wrap.classList.toggle('is-open', willOpen);
                 toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
             });
+
+            menu.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
         });
 
-        document.addEventListener('click', function () {
-            closeAll(null);
-        });
+        if (!document.documentElement.hasAttribute('data-dist-download-doc-bound')) {
+            document.documentElement.setAttribute('data-dist-download-doc-bound', '1');
+            document.addEventListener('click', function () {
+                document.querySelectorAll('.cs-dist-download-wrap.is-open').forEach(function (wrap) {
+                    wrap.classList.remove('is-open');
+                    var menu = wrap.querySelector('[data-dist-download-menu], .cs-dist-download-menu');
+                    var toggle = wrap.querySelector('[data-dist-download-toggle], .cs-dist-download-toggle');
+                    if (menu) menu.hidden = true;
+                    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+                });
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key !== 'Escape') return;
+                document.querySelectorAll('.cs-dist-download-wrap.is-open').forEach(function (wrap) {
+                    wrap.classList.remove('is-open');
+                    var menu = wrap.querySelector('[data-dist-download-menu], .cs-dist-download-menu');
+                    var toggle = wrap.querySelector('[data-dist-download-toggle], .cs-dist-download-toggle');
+                    if (menu) menu.hidden = true;
+                    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+                });
+            });
+        }
 
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') closeAll(null);
-        });
     }
 
     function initDistEmailModal(scope, emailUrl, csrfToken, toastEl) {

@@ -132,6 +132,8 @@ class ShareFairApiService
         $count += $this->countItemsInAllocations($data['non_marital_assets'] ?? []);
         $count += count($data['dont_want_items'] ?? []);
         $count += count($data['donation_items'] ?? []);
+        $count += count($data['unassigned_items'] ?? []);
+        $count += count($data['adjust_available_items'] ?? []);
 
         return $count > 0 ? $count : null;
     }
@@ -161,6 +163,8 @@ class ShareFairApiService
             $data['non_marital_assets'] ?? [],
             $data['dont_want_items'] ?? [],
             $data['donation_items'] ?? [],
+            $data['unassigned_items'] ?? [],
+            $data['adjust_available_items'] ?? [],
         ] as $section) {
             if (!is_array($section)) {
                 continue;
@@ -217,6 +221,8 @@ class ShareFairApiService
         $data['non_marital_assets'] = $this->enrichAllocationItemBrands($data['non_marital_assets'] ?? [], $brandLabels, $itemRecords);
         $data['dont_want_items'] = $this->enrichFlatItemBrands($data['dont_want_items'] ?? [], $brandLabels, $itemRecords);
         $data['donation_items'] = $this->enrichFlatItemBrands($data['donation_items'] ?? [], $brandLabels, $itemRecords);
+        $data['unassigned_items'] = $this->enrichFlatItemBrands($data['unassigned_items'] ?? [], $brandLabels, $itemRecords);
+        $data['adjust_available_items'] = $this->enrichFlatItemBrands($data['adjust_available_items'] ?? [], $brandLabels, $itemRecords);
 
         return $data;
     }
@@ -230,6 +236,8 @@ class ShareFairApiService
             $data['non_marital_assets'] ?? [],
             $data['dont_want_items'] ?? [],
             $data['donation_items'] ?? [],
+            $data['unassigned_items'] ?? [],
+            $data['adjust_available_items'] ?? [],
         ] as $section) {
             if (!is_array($section)) {
                 continue;
@@ -382,7 +390,7 @@ class ShareFairApiService
 
         $this->forgetDistributePreviewCache($caseId);
 
-        return $payload;
+        return $this->normalizeDistributePreviewPayload($caseId, $payload);
     }
 
     private function forgetDistributePreviewCache(int $caseId): void

@@ -136,7 +136,7 @@
                 <div class="cs-dist-adjust-header">
                     <div>
                         <h2 class="cs-dist-adjust-title">Adjust distribution</h2>
-                        <p class="cs-dist-adjust-lead">Drag assets between participants or from Available marital assets (Don’t Want and other unassigned marital leftovers). Use Move to when needed.</p>
+                        <p class="cs-dist-adjust-lead">Drag assets between participants or from Available marital assets (in-progress, rejected, and other listed statuses). Use Move to when needed.</p>
                     </div>
                     <div class="cs-dist-adjust-actions">
                         <button type="button" class="cs-btn-secondary" data-dist-adjust-cancel>Cancel</button>

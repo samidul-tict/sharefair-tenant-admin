@@ -1301,7 +1301,7 @@ a.text-info:hover {
 .cs-distribute-page-actions {
     position: sticky;
     bottom: 0;
-    z-index: 5;
+    z-index: 40;
     margin-top: 0.5rem;
     padding: 1rem 1.15rem;
     border: 1px solid var(--cs-border);
@@ -1309,6 +1309,7 @@ a.text-info:hover {
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
     backdrop-filter: blur(8px);
+    overflow: visible;
 }
 .cs-distribute-review-check {
     display: flex;
@@ -1328,6 +1329,7 @@ a.text-info:hover {
     flex-wrap: wrap;
     gap: 0.65rem;
     justify-content: flex-end;
+    overflow: visible;
 }
 .cs-distribute-page-actions-readonly {
     justify-content: flex-end;
@@ -1532,13 +1534,19 @@ a.text-info:hover {
     position: absolute;
     top: calc(100% + 0.35rem);
     right: 0;
-    z-index: 20;
+    z-index: 30;
     min-width: 10.5rem;
     padding: 0.35rem;
     border: 1px solid var(--cs-border);
     border-radius: 10px;
     background: #fff;
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+/* Sticky bottom action bar: open the menu upward so it stays on-screen. */
+.cs-distribute-page-actions .cs-dist-download-menu {
+    top: auto;
+    bottom: calc(100% + 0.35rem);
+    box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.12);
 }
 .cs-dist-download-option {
     display: flex;
@@ -1801,19 +1809,14 @@ a.text-info:hover {
 }
 .case-show-modern .cs-table tbody tr:hover { background: var(--cs-bg); }
 .case-show-modern .cs-assets-table-wrap {
-    max-height: min(70vh, 900px);
-    overflow: auto;
+    overflow-x: auto;
     margin-top: 0;
     border: 1px solid var(--cs-border);
     border-radius: 12px;
     background: var(--cs-card-bg);
 }
 .case-show-modern .cs-assets-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 2;
     background: var(--cs-bg);
-    box-shadow: 0 1px 0 var(--cs-border);
 }
 .case-show-modern .cs-assets-table tbody tr:nth-child(even) {
     background: rgba(248, 249, 250, 0.65);

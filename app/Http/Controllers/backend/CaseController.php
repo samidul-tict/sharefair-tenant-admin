@@ -330,7 +330,7 @@ class CaseController extends Controller
         return response()->json([
             'status' => true,
             'message' => $payload['message'] ?? 'Distribution adjusted successfully.',
-            'data' => $payload['data'] ?? null,
+            'data' => $payload['data'] ?? $payload,
         ]);
     }
 
