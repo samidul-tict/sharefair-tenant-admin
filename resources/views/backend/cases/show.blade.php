@@ -133,6 +133,10 @@
                 <i class="fas fa-box" aria-hidden="true"></i> Assets
                 <span class="cs-tab-count">{{ $assetCount }}</span>
             </button>
+            <button type="button" class="cs-tab" role="tab" id="tab-comments" aria-selected="false" aria-controls="panel-comments" data-tab="comments">
+                <i class="fas fa-comments" aria-hidden="true"></i> Comments
+                <span class="cs-tab-count" id="caseCommentsTabCount">{{ $commentCount ?? 0 }}</span>
+            </button>
             <button type="button" class="cs-tab" role="tab" id="tab-activities" aria-selected="false" aria-controls="panel-activities" data-tab="activities">
                 <i class="fas fa-stream" aria-hidden="true"></i> Activities
                 <span class="cs-tab-count">{{ $activityCount }}</span>
@@ -411,6 +415,47 @@
             @endif
         </div>
 
+        {{-- Comments --}}
+        <div class="cs-tab-panel" role="tabpanel" id="panel-comments" aria-labelledby="tab-comments" data-panel="comments" hidden>
+            <div class="cs-section-header">
+                <h2 class="cs-section-title">Case comments</h2>
+                <p class="cs-section-subtitle">Matter-level discussion only (not linked to an asset)</p>
+            </div>
+            <div class="cs-comments-board" id="caseCommentsBoard" data-comments-scope="case">
+                <div class="cs-comments-sticky">
+                    <div class="cs-comments-composer-row" data-comments-composer-collapsed>
+                        <div class="cs-comments-avatar is-you" aria-hidden="true">{{ strtoupper(mb_substr(Auth::user()->name ?? 'Y', 0, 1)) }}</div>
+                        <button type="button" class="cs-comments-pill" data-comments-open>Add a comment…</button>
+                        <button type="button" class="cs-comments-send" data-comments-open aria-label="Add comment"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="cs-comments-composer-expanded" data-comments-composer-expanded hidden>
+                        <textarea data-comments-input rows="4" maxlength="5000" placeholder="Add a comment…" aria-label="Add a comment"></textarea>
+                        <div class="cs-comments-composer-actions">
+                            <p class="cs-case-comment-status" data-comments-status hidden></p>
+                            <button type="button" class="cs-btn-secondary" data-comments-cancel>Cancel</button>
+                            <button type="button" class="cs-btn-primary" data-comments-submit><i class="fas fa-paper-plane" aria-hidden="true"></i> Comment</button>
+                        </div>
+                    </div>
+                    <div class="cs-comments-toolbar">
+                        <div class="cs-comments-search-wrap">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input type="search" data-comments-search maxlength="100" placeholder="Search comments…" aria-label="Search comments">
+                        </div>
+                        <div class="cs-comments-toolbar-meta">
+                            <span class="cs-comments-count" data-comments-count id="caseCommentsCountLabel">{{ (int) ($commentCount ?? 0) }} Comment{{ ((int) ($commentCount ?? 0)) === 1 ? '' : 's' }}</span>
+                            <select data-comments-sort aria-label="Sort by date">
+                                <option value="desc" selected>Newest first</option>
+                                <option value="asc">Oldest first</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div data-comments-list id="caseCommentsList">
+                    <p class="cs-comments-empty">Open this tab to load comments.</p>
+                </div>
+            </div>
+        </div>
+
         {{-- Activities --}}
         <div class="cs-tab-panel" role="tabpanel" id="panel-activities" aria-labelledby="tab-activities" data-panel="activities" hidden>
             <div class="cs-section-header">
@@ -425,13 +470,122 @@
             </div>
         </div>
     </div>
+
+    <div class="cs-asset-detail-modal" id="assetDetailModal" hidden>
+        <div class="cs-asset-detail-backdrop" data-asset-detail-close></div>
+        <div class="cs-asset-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="assetDetailTitle">
+            <div class="cs-asset-detail-header">
+                <div>
+                    <h2 id="assetDetailTitle">Asset details</h2>
+                    <p class="cs-asset-detail-subtitle" id="assetDetailSubtitle"></p>
+                </div>
+                <button type="button" class="cs-asset-detail-close" data-asset-detail-close aria-label="Close asset details">
+                    <i class="fas fa-times" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="cs-asset-detail-tabs" role="tablist" aria-label="Asset sections">
+                <button type="button" class="cs-asset-detail-tab is-active" role="tab" data-asset-tab="details" aria-selected="true">Details</button>
+                <button type="button" class="cs-asset-detail-tab" role="tab" data-asset-tab="comments" aria-selected="false">Comments</button>
+                <button type="button" class="cs-asset-detail-tab" role="tab" data-asset-tab="timeline" aria-selected="false">Timeline</button>
+            </div>
+            <div class="cs-asset-detail-body">
+                <div class="cs-asset-detail-panel is-active" data-asset-panel="details" id="assetDetailPanel">
+                    <p class="cs-asset-detail-loading">Loading asset details…</p>
+                </div>
+                <div class="cs-asset-detail-panel" data-asset-panel="comments" id="assetDetailComments" hidden>
+                    <div class="cs-comments-board" id="assetCommentsBoard" data-comments-scope="asset">
+                        <div class="cs-comments-sticky">
+                            <div class="cs-comments-composer-row" data-comments-composer-collapsed>
+                                <div class="cs-comments-avatar is-you" aria-hidden="true">{{ strtoupper(mb_substr(Auth::user()->name ?? 'Y', 0, 1)) }}</div>
+                                <button type="button" class="cs-comments-pill" data-comments-open>Add a comment…</button>
+                                <button type="button" class="cs-comments-send" data-comments-open aria-label="Add comment"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>
+                            </div>
+                            <div class="cs-comments-composer-expanded" data-comments-composer-expanded hidden>
+                                <textarea data-comments-input rows="3" maxlength="5000" placeholder="Add a comment…" aria-label="Add a comment"></textarea>
+                                <div class="cs-comments-composer-actions">
+                                    <p class="cs-case-comment-status" data-comments-status hidden></p>
+                                    <button type="button" class="cs-btn-secondary" data-comments-cancel>Cancel</button>
+                                    <button type="button" class="cs-btn-primary" data-comments-submit><i class="fas fa-paper-plane" aria-hidden="true"></i> Comment</button>
+                                </div>
+                            </div>
+                            <div class="cs-comments-toolbar">
+                                <div class="cs-comments-search-wrap">
+                                    <i class="fas fa-search" aria-hidden="true"></i>
+                                    <input type="search" data-comments-search maxlength="100" placeholder="Search comments…" aria-label="Search comments">
+                                </div>
+                                <div class="cs-comments-toolbar-meta">
+                                    <span class="cs-comments-count" data-comments-count>0 Comments</span>
+                                    <select data-comments-sort aria-label="Sort by date">
+                                        <option value="desc" selected>Newest first</option>
+                                        <option value="asc">Oldest first</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div data-comments-list>
+                            <p class="cs-comments-empty">Open this tab to load comments.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="cs-asset-detail-panel" data-asset-panel="timeline" id="assetDetailTimeline" hidden>
+                    <p class="cs-asset-detail-loading">Loading timeline…</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
+@php
+    $assetDetailUrlTemplate = route('admin.cases.assets.show', ['id' => $case->id, 'itemId' => 0]);
+    $assetCommentsUrlTemplate = route('admin.cases.assets.comments', ['id' => $case->id, 'itemId' => 0]);
+    $assetCommentsStoreUrlTemplate = route('admin.cases.assets.comments.store', ['id' => $case->id, 'itemId' => 0]);
+    $assetTimelineUrlTemplate = route('admin.cases.assets.timeline', ['id' => $case->id, 'itemId' => 0]);
+    $assetCommentResponsesUrlTemplate = route('admin.cases.assets.commentResponses', [
+        'id' => $case->id,
+        'itemId' => 0,
+        'commentId' => 0,
+    ]);
+    $assetCommentResponseStoreUrlTemplate = route('admin.cases.assets.commentResponses.store', [
+        'id' => $case->id,
+        'itemId' => 0,
+        'commentId' => 0,
+    ]);
+    $caseCommentResponsesUrlTemplate = route('admin.cases.commentResponses', [
+        'id' => $case->id,
+        'commentId' => 0,
+    ]);
+    $caseCommentResponseStoreUrlTemplate = route('admin.cases.commentResponses.store', [
+        'id' => $case->id,
+        'commentId' => 0,
+    ]);
+    $caseCommentLikeUrlTemplate = route('admin.cases.comments.like', [
+        'id' => $case->id,
+        'commentId' => 0,
+    ]);
+    $caseCommentUnlikeUrlTemplate = route('admin.cases.comments.unlike', [
+        'id' => $case->id,
+        'commentId' => 0,
+    ]);
+@endphp
 @push('scripts')
+<script src="{{ asset('backend-assets/js/case-comments-board.js') }}"></script>
 <script>
 var caseId = {{ $case->id }};
+var csrfToken = @json(csrf_token());
+var caseCommentsUrl = @json(route('admin.cases.comments', $case->id));
+var caseCommentStoreUrl = @json(route('admin.cases.comments.store', $case->id));
+var caseCommentResponsesUrlTemplate = @json($caseCommentResponsesUrlTemplate);
+var caseCommentResponseStoreUrlTemplate = @json($caseCommentResponseStoreUrlTemplate);
+var caseCommentLikeUrlTemplate = @json($caseCommentLikeUrlTemplate);
+var caseCommentUnlikeUrlTemplate = @json($caseCommentUnlikeUrlTemplate);
 var itemDataElementLabels = @json($itemDataElementLabels);
 var assetsListUrl = @json(route('admin.cases.assets.list', $case->id));
+var assetDetailUrlTemplate = @json($assetDetailUrlTemplate);
+var assetCommentsUrlTemplate = @json($assetCommentsUrlTemplate);
+var assetCommentsStoreUrlTemplate = @json($assetCommentsStoreUrlTemplate);
+var assetTimelineUrlTemplate = @json($assetTimelineUrlTemplate);
+var assetCommentResponsesUrlTemplate = @json($assetCommentResponsesUrlTemplate);
+var assetCommentResponseStoreUrlTemplate = @json($assetCommentResponseStoreUrlTemplate);
 
 function activateTab(tabId) {
     document.querySelectorAll('.cs-tab').forEach(function(tab) {
@@ -446,6 +600,12 @@ function activateTab(tabId) {
     });
     if (tabId === 'assets' && typeof scheduleCaseAssetsLoad === 'function') {
         scheduleCaseAssetsLoad();
+    }
+    if (tabId === 'comments' && typeof window.loadCaseComments === 'function') {
+        window.loadCaseComments();
+    }
+    if (tabId === 'activities' && typeof window.loadMoreCaseActivitiesIfNeeded === 'function') {
+        window.loadMoreCaseActivitiesIfNeeded();
     }
 }
 
@@ -479,73 +639,247 @@ $(document).ready(function() {
         });
     }
 
-    loadActivities();
+    var caseActivityState = {
+        page: 0,
+        lastPage: 1,
+        loading: false,
+        hasMore: true,
+        observer: null
+    };
 
-    function loadActivities(page) {
-        page = page || 1;
-        $.ajax({
-            url: "{{ route('admin.case.activity.list', $case->id) }}",
-            type: 'GET',
-            data: { page: page },
-            success: function(res) {
-                function escapeHtml(text) {
-                    if (text === null || text === undefined) return '';
-                    return String(text)
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#039;');
-                }
-                var html = '';
-                if (res.activities && res.activities.length) {
-                    html += '<div class="cs-timeline">';
-                    res.activities.forEach(function(row, idx) {
-                        var userName = row.user_name || (row.user && row.user.name) || row.activity_by || 'N/A';
-                        var subject = row.subject || 'Activity';
-                        var notes = row.notes || '';
-                        var nextDate = row.next_follow_up_date || '';
-                        var created = row.created_date || '';
-                        html += '<article class="cs-timeline-item">' +
-                            '<div class="cs-timeline-rail" aria-hidden="true"><span class="cs-timeline-dot"></span>' +
-                            (idx < res.activities.length - 1 ? '<span class="cs-timeline-line"></span>' : '') +
-                            '</div>' +
-                            '<div class="cs-timeline-card">' +
-                            '<h3 class="cs-timeline-subject">' + escapeHtml(subject) + '</h3>' +
-                            '<div class="cs-timeline-meta">' + escapeHtml(created) + ' · ' + escapeHtml(userName) + '</div>' +
-                            (notes ? '<p class="cs-timeline-notes">' + escapeHtml(notes) + '</p>' : '') +
-                            (nextDate ? '<div class="cs-timeline-followup"><i class="fas fa-calendar-check" aria-hidden="true"></i> Next follow-up: ' + escapeHtml(nextDate) + '</div>' : '') +
-                            '</div></article>';
-                    });
-                    html += '</div>';
-                    if (res.pagination && res.pagination.last_page > 1) {
-                        var p = res.pagination;
-                        html += '<nav class="cs-activity-pagination" aria-label="Case activities pagination"><ul class="pagination mb-0 mt-3 flex-wrap justify-content-end">';
-                        if (p.prev_page_url) {
-                            html += '<li class="page-item"><a class="page-link cs-activity-page-link" href="#" data-page="' + (p.current_page - 1) + '" aria-label="Previous">Previous</a></li>';
-                        }
-                        for (var i = 1; i <= p.last_page; i++) {
-                            var active = i === p.current_page ? ' active' : '';
-                            html += '<li class="page-item' + active + '"><a class="page-link cs-activity-page-link" href="#" data-page="' + i + '">' + i + '</a></li>';
-                        }
-                        if (p.next_page_url) {
-                            html += '<li class="page-item"><a class="page-link cs-activity-page-link" href="#" data-page="' + (p.current_page + 1) + '" aria-label="Next">Next</a></li>';
-                        }
-                        html += '</ul><p class="cs-activity-pagination-info text-muted small mb-0 mt-1">Showing ' + (p.per_page * (p.current_page - 1) + 1) + '–' + Math.min(p.current_page * p.per_page, p.total) + ' of ' + p.total + '</p></nav>';
-                    }
-                } else {
-                    html = '<div class="cs-empty-state"><div class="cs-empty-icon" aria-hidden="true"><i class="fas fa-stream"></i></div><div class="cs-empty-text">No activities found.</div></div>';
-                }
-                $('#activityList').html(html);
+    function escapeTimelineHtml(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function formatTimelineDate(value) {
+        if (!value) return '';
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return String(value);
+        return d.toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    }
+
+    function buildTimelineItemHtml(row) {
+        var userName = row.created_by_name || row.user_name || (row.user && row.user.name) || row.activity_by || 'N/A';
+        var subject = row.subject || 'Activity';
+        var notes = row.notes || '';
+        var nextDate = row.next_follow_up_date || '';
+        var created = formatTimelineDate(row.created_date) || (row.created_date || '');
+        return (
+            '<article class="cs-timeline-item">' +
+            '<div class="cs-timeline-rail" aria-hidden="true"><span class="cs-timeline-dot"></span><span class="cs-timeline-line"></span></div>' +
+            '<div class="cs-timeline-card">' +
+            '<h3 class="cs-timeline-subject">' + escapeTimelineHtml(subject) + '</h3>' +
+            '<div class="cs-timeline-meta">' + escapeTimelineHtml(created) + ' · ' + escapeTimelineHtml(userName) + '</div>' +
+            (notes ? '<p class="cs-timeline-notes">' + escapeTimelineHtml(notes) + '</p>' : '') +
+            (nextDate ? '<div class="cs-timeline-followup"><i class="fas fa-calendar-check" aria-hidden="true"></i> Next follow-up: ' + escapeTimelineHtml(nextDate) + '</div>' : '') +
+            '</div></article>'
+        );
+    }
+
+    function syncTimelineRails(timelineEl) {
+        if (!timelineEl) return;
+        var items = timelineEl.querySelectorAll('.cs-timeline-item');
+        items.forEach(function(item, idx) {
+            var rail = item.querySelector('.cs-timeline-rail');
+            if (!rail) return;
+            var line = rail.querySelector('.cs-timeline-line');
+            var needsLine = idx < items.length - 1;
+            if (needsLine && !line) {
+                rail.insertAdjacentHTML('beforeend', '<span class="cs-timeline-line"></span>');
+            } else if (!needsLine && line) {
+                line.remove();
             }
         });
     }
 
-    $(document).on('click', '#activityList .cs-activity-page-link', function(e) {
-        e.preventDefault();
-        var page = $(this).data('page');
-        if (page) loadActivities(page);
+    function ensureTimelineShell(container, loadingText) {
+        var timeline = container.querySelector('.cs-timeline');
+        var sentinel = container.querySelector('.cs-timeline-sentinel');
+        var status = container.querySelector('.cs-timeline-status');
+        if (!timeline) {
+            container.innerHTML =
+                '<div class="cs-timeline"></div>' +
+                '<div class="cs-timeline-sentinel" aria-hidden="true"></div>' +
+                '<div class="cs-timeline-status" role="status">' + (loadingText || 'Loading activities…') + '</div>';
+            timeline = container.querySelector('.cs-timeline');
+            sentinel = container.querySelector('.cs-timeline-sentinel');
+            status = container.querySelector('.cs-timeline-status');
+        }
+        return { timeline: timeline, sentinel: sentinel, status: status };
+    }
+
+    function setTimelineStatus(statusEl, text) {
+        if (!statusEl) return;
+        statusEl.textContent = text || '';
+        statusEl.hidden = !text;
+    }
+
+    function loadActivities(reset) {
+        var list = document.getElementById('activityList');
+        if (!list) return;
+        if (caseActivityState.loading) return;
+        if (!reset && !caseActivityState.hasMore) return;
+
+        if (reset) {
+            caseActivityState.page = 0;
+            caseActivityState.lastPage = 1;
+            caseActivityState.hasMore = true;
+            list.innerHTML = '';
+            if (caseActivityState.observer) {
+                caseActivityState.observer.disconnect();
+                caseActivityState.observer = null;
+            }
+        }
+
+        var nextPage = caseActivityState.page + 1;
+        var shell = ensureTimelineShell(list, nextPage === 1 ? 'Loading activities…' : 'Loading more…');
+        setTimelineStatus(shell.status, nextPage === 1 ? 'Loading activities…' : 'Loading more…');
+        caseActivityState.loading = true;
+
+        $.ajax({
+            url: "{{ route('admin.case.activity.list', $case->id) }}",
+            type: 'GET',
+            data: { page: nextPage },
+            success: function(res) {
+                var activities = res.activities || [];
+                var pagination = res.pagination || {};
+                var currentPage = Number(pagination.current_page || nextPage);
+                var lastPage = Number(pagination.last_page || currentPage);
+
+                if (currentPage === 1 && !activities.length) {
+                    list.innerHTML = '<div class="cs-empty-state"><div class="cs-empty-icon" aria-hidden="true"><i class="fas fa-stream"></i></div><div class="cs-empty-text">No activities found.</div></div>';
+                    caseActivityState.hasMore = false;
+                    caseActivityState.loading = false;
+                    return;
+                }
+
+                shell = ensureTimelineShell(list);
+                var html = '';
+                activities.forEach(function(row) {
+                    html += buildTimelineItemHtml(row);
+                });
+                shell.timeline.insertAdjacentHTML('beforeend', html);
+                syncTimelineRails(shell.timeline);
+
+                caseActivityState.page = currentPage;
+                caseActivityState.lastPage = lastPage;
+                caseActivityState.hasMore = currentPage < lastPage;
+                setTimelineStatus(
+                    shell.status,
+                    caseActivityState.hasMore ? '' : (activities.length || shell.timeline.children.length ? '' : 'No activities found.')
+                );
+
+                if (!caseActivityState.observer && shell.sentinel) {
+                    caseActivityState.observer = new IntersectionObserver(function(entries) {
+                        if (!entries.some(function(entry) { return entry.isIntersecting; })) return;
+                        if (caseActivityState.hasMore && !caseActivityState.loading) {
+                            loadActivities(false);
+                        }
+                    }, { root: null, rootMargin: '160px 0px' });
+                    caseActivityState.observer.observe(shell.sentinel);
+                }
+                window.loadMoreCaseActivitiesIfNeeded = function() {
+                    var sentinel = document.querySelector('#activityList .cs-timeline-sentinel');
+                    if (!sentinel || !caseActivityState.hasMore || caseActivityState.loading) return;
+                    var rect = sentinel.getBoundingClientRect();
+                    if (rect.top <= (window.innerHeight + 160)) {
+                        loadActivities(false);
+                    }
+                };
+            },
+            error: function() {
+                shell = ensureTimelineShell(list);
+                if (!shell.timeline.children.length) {
+                    list.innerHTML = '<div class="cs-empty-state"><div class="cs-empty-icon" aria-hidden="true"><i class="fas fa-stream"></i></div><div class="cs-empty-text">Unable to load activities.</div></div>';
+                } else {
+                    setTimelineStatus(shell.status, 'Unable to load more activities.');
+                }
+            },
+            complete: function() {
+                caseActivityState.loading = false;
+                if (caseActivityState.hasMore) {
+                    var status = document.querySelector('#activityList .cs-timeline-status');
+                    if (status && !status.textContent) setTimelineStatus(status, '');
+                }
+            }
+        });
+    }
+
+    loadActivities(true);
+
+    function commentUrlReplace(template, commentId) {
+        return String(template).replace(/\/comments\/0(\/|$)/, '/comments/' + commentId + '$1');
+    }
+
+    function assetCommentPath(template, itemId, commentId) {
+        var url = String(template).replace(/\/assets\/0\//, '/assets/' + itemId + '/');
+        if (commentId != null) {
+            url = url.replace(/\/comments\/0\//, '/comments/' + commentId + '/');
+        }
+        return url;
+    }
+
+    var caseCommentsBoard = window.CaseCommentsBoard && window.CaseCommentsBoard.create({
+        root: '#caseCommentsBoard',
+        csrfToken: csrfToken,
+        listUrl: caseCommentsUrl,
+        storeUrl: caseCommentStoreUrl,
+        responsesUrl: function(commentId) { return commentUrlReplace(caseCommentResponsesUrlTemplate, commentId); },
+        responseStoreUrl: function(commentId) { return commentUrlReplace(caseCommentResponseStoreUrlTemplate, commentId); },
+        likeUrl: function(commentId) { return commentUrlReplace(caseCommentLikeUrlTemplate, commentId); },
+        unlikeUrl: function(commentId) { return commentUrlReplace(caseCommentUnlikeUrlTemplate, commentId); },
+        onCountChange: function(total) {
+            var el = document.getElementById('caseCommentsTabCount');
+            if (el) el.textContent = String(total);
+        }
     });
+
+    window.loadCaseComments = function() {
+        if (caseCommentsBoard) caseCommentsBoard.load();
+    };
+
+    var assetCommentConfig = {
+        root: '#assetCommentsBoard',
+        csrfToken: csrfToken,
+        itemId: 0,
+        listUrl: '',
+        storeUrl: '',
+        responsesUrl: function(commentId) {
+            return assetCommentPath(assetCommentResponsesUrlTemplate, assetCommentConfig.itemId, commentId);
+        },
+        responseStoreUrl: function(commentId) {
+            return assetCommentPath(assetCommentResponseStoreUrlTemplate, assetCommentConfig.itemId, commentId);
+        },
+        likeUrl: function(commentId) { return commentUrlReplace(caseCommentLikeUrlTemplate, commentId); },
+        unlikeUrl: function(commentId) { return commentUrlReplace(caseCommentUnlikeUrlTemplate, commentId); },
+        scrollRoot: document.querySelector('#assetDetailModal .cs-asset-detail-body')
+    };
+
+    var assetCommentsBoard = window.CaseCommentsBoard && window.CaseCommentsBoard.create(assetCommentConfig);
+
+    window.prepareAssetCommentsBoard = function(itemId) {
+        assetCommentConfig.itemId = itemId;
+        assetCommentConfig.listUrl = String(assetCommentsUrlTemplate).replace(/\/0(\/comments)/, '/' + itemId + '$1');
+        assetCommentConfig.storeUrl = String(assetCommentsStoreUrlTemplate).replace(/\/0(\/comments)/, '/' + itemId + '$1');
+        if (assetCommentsBoard) assetCommentsBoard.reset();
+    };
+
+    window.loadAssetCommentsBoard = function() {
+        if (!assetCommentConfig.itemId || !assetCommentsBoard) return;
+        assetCommentsBoard.load();
+    };
 
     (function initAssetsTable() {
         var table = document.getElementById('assetsTable');
@@ -681,12 +1015,307 @@ $(document).ready(function() {
         }
 
         function renderAssetRow(row) {
-            var html = '<tr>';
+            var html = '<tr class="cs-assets-row-clickable" tabindex="0" role="button" data-asset-id="' +
+                Number(row.id || 0) +
+                '" aria-label="View details for ' +
+                escapeHtml(row.name || 'asset') +
+                '">';
             ASSET_COLS.forEach(function(col) {
                 var cls = col === 'name' ? ' class="cs-table-name"' : '';
                 html += '<td data-col="' + col + '"' + cls + '>' + escapeHtml(row[col]) + '</td>';
             });
             html += '</tr>';
+            return html;
+        }
+
+        function assetDetailUrl(itemId) {
+            return String(assetDetailUrlTemplate).replace(/\/0(\?|$)/, '/' + itemId + '$1');
+        }
+
+        function assetCommentsUrl(itemId) {
+            return String(assetCommentsUrlTemplate).replace(/\/0(\/comments)/, '/' + itemId + '$1');
+        }
+
+        function assetTimelineUrl(itemId) {
+            return String(assetTimelineUrlTemplate).replace(/\/0(\/timeline)/, '/' + itemId + '$1');
+        }
+
+        function assetCommentResponsesUrl(itemId, commentId) {
+            return String(assetCommentResponsesUrlTemplate)
+                .replace(/\/assets\/0\//, '/assets/' + itemId + '/')
+                .replace(/\/comments\/0\//, '/comments/' + commentId + '/');
+        }
+
+        var currentAssetId = 0;
+        var assetDetailCache = {
+            details: null,
+            commentsLoadedFor: 0,
+            commentsPage: 1,
+            timelineLoadedFor: 0,
+            timelinePage: 0,
+            timelineHasMore: true,
+            timelineLoading: false,
+            timelineObserver: null
+        };
+
+        function setAssetDetailTab(tabId) {
+            document.querySelectorAll('[data-asset-tab]').forEach(function(tab) {
+                var active = tab.getAttribute('data-asset-tab') === tabId;
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            document.querySelectorAll('[data-asset-panel]').forEach(function(panel) {
+                var active = panel.getAttribute('data-asset-panel') === tabId;
+                panel.classList.toggle('is-active', active);
+                panel.hidden = !active;
+            });
+            if (tabId === 'comments' && typeof window.loadAssetCommentsBoard === 'function') {
+                window.loadAssetCommentsBoard();
+            }
+            if (tabId === 'timeline') {
+                if (assetDetailCache.timelineLoadedFor === currentAssetId && assetDetailCache.timelinePage > 0) {
+                    return;
+                }
+                loadAssetTimeline(true);
+            }
+        }
+
+        function disconnectAssetTimelineObserver() {
+            if (assetDetailCache.timelineObserver) {
+                assetDetailCache.timelineObserver.disconnect();
+                assetDetailCache.timelineObserver = null;
+            }
+        }
+
+        function openAssetDetail(itemId) {
+            var modal = document.getElementById('assetDetailModal');
+            var detailsEl = document.getElementById('assetDetailPanel');
+            var commentsEl = document.getElementById('assetDetailComments');
+            var timelineEl = document.getElementById('assetDetailTimeline');
+            var title = document.getElementById('assetDetailTitle');
+            var subtitle = document.getElementById('assetDetailSubtitle');
+            if (!modal || !detailsEl || !itemId) return;
+
+            currentAssetId = itemId;
+            disconnectAssetTimelineObserver();
+            assetDetailCache = {
+                details: null,
+                commentsLoadedFor: 0,
+                commentsPage: 1,
+                timelineLoadedFor: 0,
+                timelinePage: 0,
+                timelineHasMore: true,
+                timelineLoading: false,
+                timelineObserver: null
+            };
+
+            modal.hidden = false;
+            document.body.classList.add('cs-asset-detail-open');
+            if (title) title.textContent = 'Asset details';
+            if (subtitle) subtitle.textContent = 'Loading…';
+            detailsEl.innerHTML = '<p class="cs-asset-detail-loading">Loading asset details…</p>';
+            if (typeof window.prepareAssetCommentsBoard === 'function') {
+                window.prepareAssetCommentsBoard(itemId);
+            }
+            if (timelineEl) timelineEl.innerHTML = '<p class="cs-asset-detail-loading">Open this tab to load timeline.</p>';
+            setAssetDetailTab('details');
+
+            $.ajax({
+                url: assetDetailUrl(itemId),
+                type: 'GET',
+                success: function(res) {
+                    var item = (res && res.item) || {};
+                    assetDetailCache.details = item;
+                    if (title) title.textContent = item.name || 'Asset details';
+                    if (subtitle) subtitle.textContent = item.status ? ('Status: ' + item.status) : '';
+                    detailsEl.innerHTML = renderAssetDetail(item);
+                },
+                error: function() {
+                    if (subtitle) subtitle.textContent = '';
+                    detailsEl.innerHTML = '<p class="cs-asset-detail-error">Unable to load asset details. Please try again.</p>';
+                }
+            });
+        }
+
+        function closeAssetDetail() {
+            var modal = document.getElementById('assetDetailModal');
+            if (!modal) return;
+            disconnectAssetTimelineObserver();
+            modal.hidden = true;
+            document.body.classList.remove('cs-asset-detail-open');
+            currentAssetId = 0;
+        }
+
+        function formatAssetDate(value) {
+            if (!value) return '';
+            var d = new Date(value);
+            if (isNaN(d.getTime())) return String(value);
+            return d.toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit'
+            });
+        }
+
+        function renderAssetDetail(item) {
+            var fields = [
+                ['Status', item.status],
+                ['Location', item.location],
+                ['Category', item.category],
+                ['Other category', item.other_category],
+                ['Condition', item.condition],
+                ['Brand', item.brand],
+                ['Other brand', item.other_brand],
+                ['Purchase year', item.purchase_year],
+                ['Purchase price', item.purchase_price],
+                ['Estimated value', item.estimated_value],
+                ['Concluded price', item.concluded_price],
+                ['Accessories', item.accessories_status],
+                ['Original packaging', item.original_packaging],
+                ['Valid warranty', item.valid_warranty],
+                ['Marital asset', item.marital_asset],
+                ['Assigned to', item.assigned_to],
+                ['Assigned reason', item.assigned_reason]
+            ];
+
+            var media = item.image_url
+                ? '<div class="cs-asset-detail-media"><img src="' + escapeHtml(item.image_url) + '" alt="' + escapeHtml(item.name || 'Asset') + '"></div>'
+                : '<div class="cs-asset-detail-media is-empty" aria-hidden="true"><i class="fas fa-box-open"></i></div>';
+
+            var grid = fields.map(function(pair) {
+                return (
+                    '<div class="cs-asset-detail-field">' +
+                    '<dt>' + escapeHtml(pair[0]) + '</dt>' +
+                    '<dd>' + escapeHtml(pair[1] == null || pair[1] === '' ? '—' : pair[1]) + '</dd>' +
+                    '</div>'
+                );
+            }).join('');
+
+            return (
+                '<div class="cs-asset-detail-layout">' +
+                media +
+                '<div class="cs-asset-detail-main">' +
+                '<dl class="cs-asset-detail-grid">' + grid + '</dl>' +
+                '<div class="cs-asset-detail-block"><h3>Description</h3><p>' +
+                escapeHtml(item.description || '—') +
+                '</p></div>' +
+                '</div></div>'
+            );
+        }
+
+        function loadAssetTimeline(reset) {
+            var el = document.getElementById('assetDetailTimeline');
+            if (!el || !currentAssetId) return;
+            if (assetDetailCache.timelineLoading) return;
+
+            if (reset) {
+                disconnectAssetTimelineObserver();
+                assetDetailCache.timelineLoadedFor = currentAssetId;
+                assetDetailCache.timelinePage = 0;
+                assetDetailCache.timelineHasMore = true;
+                el.innerHTML = '';
+            } else if (
+                assetDetailCache.timelineLoadedFor !== currentAssetId ||
+                !assetDetailCache.timelineHasMore ||
+                assetDetailCache.timelinePage < 1
+            ) {
+                return;
+            }
+
+            var nextPage = assetDetailCache.timelinePage + 1;
+            var shell = ensureTimelineShell(el, nextPage === 1 ? 'Loading timeline…' : 'Loading more…');
+            setTimelineStatus(shell.status, nextPage === 1 ? 'Loading timeline…' : 'Loading more…');
+            assetDetailCache.timelineLoading = true;
+
+            $.ajax({
+                url: assetTimelineUrl(currentAssetId),
+                type: 'GET',
+                data: { page: nextPage, limit: 10 },
+                success: function(res) {
+                    if (currentAssetId !== assetDetailCache.timelineLoadedFor) return;
+
+                    var activities = res.activities || [];
+                    var pagination = res.pagination || {};
+                    var currentPage = Number(pagination.current_page || nextPage);
+                    var lastPage = Number(pagination.last_page || currentPage);
+
+                    if (currentPage === 1 && !activities.length) {
+                        el.innerHTML = '<div class="cs-empty-state cs-asset-feed-empty"><div class="cs-empty-icon" aria-hidden="true"><i class="fas fa-stream"></i></div><div class="cs-empty-text">No activities found.</div></div>';
+                        assetDetailCache.timelineHasMore = false;
+                        assetDetailCache.timelinePage = 1;
+                        return;
+                    }
+
+                    shell = ensureTimelineShell(el);
+                    var html = '';
+                    activities.forEach(function(row) {
+                        html += buildTimelineItemHtml(row);
+                    });
+                    shell.timeline.insertAdjacentHTML('beforeend', html);
+                    syncTimelineRails(shell.timeline);
+
+                    assetDetailCache.timelinePage = currentPage;
+                    assetDetailCache.timelineHasMore = currentPage < lastPage;
+                    setTimelineStatus(shell.status, '');
+
+                    var scrollRoot = document.querySelector('#assetDetailModal .cs-asset-detail-body');
+                    if (!assetDetailCache.timelineObserver && shell.sentinel) {
+                        assetDetailCache.timelineObserver = new IntersectionObserver(function(entries) {
+                            if (!entries.some(function(entry) { return entry.isIntersecting; })) return;
+                            if (assetDetailCache.timelineHasMore && !assetDetailCache.timelineLoading) {
+                                loadAssetTimeline(false);
+                            }
+                        }, { root: scrollRoot || null, rootMargin: '120px 0px' });
+                        assetDetailCache.timelineObserver.observe(shell.sentinel);
+                    }
+                },
+                error: function() {
+                    shell = ensureTimelineShell(el);
+                    if (!shell.timeline.children.length) {
+                        el.innerHTML = '<p class="cs-asset-detail-error">Unable to load timeline.</p>';
+                    } else {
+                        setTimelineStatus(shell.status, 'Unable to load more activities.');
+                    }
+                },
+                complete: function() {
+                    assetDetailCache.timelineLoading = false;
+                }
+            });
+        }
+        function renderAssetFeedPagination(pagination, feed) {
+            if (!pagination || Number(pagination.last_page || 0) <= 1) return '';
+            var page = Number(pagination.current_page || 1);
+            var last = Number(pagination.last_page || 1);
+            var html = '<nav class="cs-asset-feed-pagination" aria-label="Asset ' + feed + ' pagination"><ul class="cs-assets-page-list">';
+            if (page > 1) {
+                html += '<li><button type="button" class="cs-assets-page-btn" data-asset-feed-page="' + feed + '" data-page="' + (page - 1) + '">Previous</button></li>';
+            }
+            for (var i = 1; i <= last; i++) {
+                if (last > 7 && i > 2 && i < last - 1 && Math.abs(i - page) > 1) {
+                    if (i === 3 || i === last - 2) {
+                        html += '<li><span class="cs-assets-page-ellipsis" aria-hidden="true">…</span></li>';
+                    }
+                    continue;
+                }
+                html +=
+                    '<li><button type="button" class="cs-assets-page-btn' +
+                    (i === page ? ' is-active' : '') +
+                    '" data-asset-feed-page="' +
+                    feed +
+                    '" data-page="' +
+                    i +
+                    '"' +
+                    (i === page ? ' aria-current="page"' : '') +
+                    '>' +
+                    i +
+                    '</button></li>';
+            }
+            if (page < last) {
+                html += '<li><button type="button" class="cs-assets-page-btn" data-asset-feed-page="' + feed + '" data-page="' + (page + 1) + '">Next</button></li>';
+            }
+            html += '</ul></nav>';
             return html;
         }
 
@@ -787,6 +1416,7 @@ $(document).ready(function() {
                     if (emptyFiltered) emptyFiltered.hidden = true;
                     updateCountSubtitle(res.pagination);
                     renderPagination(res.pagination);
+                    applyColumns(columnPrefs);
                 },
                 error: function() {
                     tbody.innerHTML = '<tr><td colspan="19" class="text-center text-danger py-4">Unable to load assets. Please try again.</td></tr>';
@@ -811,6 +1441,38 @@ $(document).ready(function() {
             currentPage = 1;
             loadCaseAssets(1);
         }
+
+        if (tbody) {
+            tbody.addEventListener('click', function(e) {
+                var row = e.target.closest('tr[data-asset-id]');
+                if (!row) return;
+                var itemId = Number(row.getAttribute('data-asset-id') || 0);
+                if (itemId) openAssetDetail(itemId);
+            });
+            tbody.addEventListener('keydown', function(e) {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                var row = e.target.closest('tr[data-asset-id]');
+                if (!row) return;
+                e.preventDefault();
+                var itemId = Number(row.getAttribute('data-asset-id') || 0);
+                if (itemId) openAssetDetail(itemId);
+            });
+        }
+
+        document.querySelectorAll('[data-asset-tab]').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                setAssetDetailTab(tab.getAttribute('data-asset-tab'));
+            });
+        });
+
+        document.querySelectorAll('[data-asset-detail-close]').forEach(function(el) {
+            el.addEventListener('click', closeAssetDetail);
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Escape') return;
+            var modal = document.getElementById('assetDetailModal');
+            if (modal && !modal.hidden) closeAssetDetail();
+        });
 
         if (searchInput) {
             searchInput.addEventListener('input', function() {

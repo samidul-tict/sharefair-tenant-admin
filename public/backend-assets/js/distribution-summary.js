@@ -509,10 +509,17 @@
             });
         }
 
+        function computeEqualTargetPerUser(totalValue, participantCount) {
+            var n = Number(participantCount || 0);
+            var total = Number(totalValue || 0);
+            if (n <= 0 || total <= 0) return 0;
+            return Math.ceil(total / n);
+        }
+
         function syncAllocationSummaryTotals(d) {
-            var target = Number(d.target_value_per_user || 0);
             var maritalCount = 0;
             var maritalValue = 0;
+            var participantCount = 0;
             Object.keys(d.allocations || {}).forEach(function (key) {
                 var alloc = d.allocations[key] || {};
                 var items = alloc.items || [];
@@ -522,14 +529,25 @@
                 received = Math.round(received * 100) / 100;
                 alloc.allocated_item_count = items.length;
                 alloc.allocated_value = received;
-                alloc.value_difference = Math.round((received - target) * 100) / 100;
                 maritalCount += items.length;
                 maritalValue += received;
+                if (Number(alloc.user_id || 0) > 0) participantCount += 1;
+            });
+            maritalValue = Math.round(maritalValue * 100) / 100;
+            var target = computeEqualTargetPerUser(
+                maritalValue,
+                participantCount || Number(d.total_users || 0)
+            );
+            Object.keys(d.allocations || {}).forEach(function (key) {
+                var alloc = d.allocations[key] || {};
+                alloc.value_difference =
+                    Math.round((Number(alloc.allocated_value || 0) - target) * 100) / 100;
             });
             d.item_count = maritalCount;
-            d.total_value = Math.round(maritalValue * 100) / 100;
+            d.total_value = maritalValue;
             d.total_marital_assets_count = maritalCount;
-            d.total_marital_assets_value = d.total_value;
+            d.total_marital_assets_value = maritalValue;
+            d.target_value_per_user = target;
             return d;
         }
 
@@ -674,6 +692,22 @@
             return null;
         }
 
+        function refreshAdjustTarget() {
+            if (!adjustState) return;
+            var parties = adjustState.buckets.filter(function (bucket) {
+                return !bucket.isPool;
+            });
+            var total = parties.reduce(function (sum, bucket) {
+                return (
+                    sum +
+                    bucket.items.reduce(function (itemSum, item) {
+                        return itemSum + itemPriceNum(item);
+                    }, Number(bucket.carry_forward_value || 0))
+                );
+            }, 0);
+            adjustState.target = computeEqualTargetPerUser(total, parties.length);
+        }
+
         function moveItemToBucket(itemId, targetKey) {
             var found = findItemOwner(itemId);
             if (!found || !adjustState) return;
@@ -689,6 +723,7 @@
                 item.allocation_reason = 'Attorney Adjusted';
             }
             targetBucket.items.push(item);
+            refreshAdjustTarget();
             renderAdjustBoard();
         }
 
@@ -912,6 +947,7 @@
                 showError('No participants available to adjust.');
                 return;
             }
+            refreshAdjustTarget();
             if (summaryRoot) summaryRoot.hidden = true;
             if (actionsAside) actionsAside.hidden = true;
             adjustRoot.hidden = false;

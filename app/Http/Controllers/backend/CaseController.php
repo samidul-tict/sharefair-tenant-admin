@@ -144,7 +144,14 @@ class CaseController extends Controller
             ->orderBy('name')
             ->get();
 
-        $activityCount = CaseActivity::where('case_id', $id)->count();
+        $activityCount = CaseActivity::where('case_id', $id)
+            ->whereNull('item_id')
+            ->count();
+        $commentCount = DB::table('comments')
+            ->where('case_id', $id)
+            ->whereNull('item_id')
+            ->whereNull('parent_comment_id')
+            ->count();
         $participatingUserCount = CaseUserMapping::where('case_id', $id)
             ->where('participate_in_distribution', true)
             ->count();
@@ -158,6 +165,7 @@ class CaseController extends Controller
             'itemDataElementLabels',
             'locations',
             'activityCount',
+            'commentCount',
             'participatingUserCount',
             'canDistribute',
             'showDistributionSummary'
@@ -235,6 +243,469 @@ class CaseController extends Controller
             'filters' => $this->caseAssetFilterOptions($id),
             'total_in_case' => Item::where('case_id', $id)->count(),
         ]);
+    }
+
+    /**
+     * Asset detail for the case assets table modal.
+     */
+    public function showAsset(int $id, int $itemId)
+    {
+        $this->findAccessibleCase($id);
+
+        $item = Item::query()
+            ->with(['location', 'assignedToUser'])
+            ->where('case_id', $id)
+            ->where('id', $itemId)
+            ->first();
+
+        if (!$item) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Asset not found for this case.',
+            ], 404);
+        }
+
+        $labels = DB::table('data_element')
+            ->whereIn('category_id', [7, 8, 10, 12, 14])
+            ->where('is_active', true)
+            ->pluck('name', 'value');
+
+        return response()->json([
+            'status' => true,
+            'item' => $this->formatCaseAssetDetail($item, $labels),
+        ]);
+    }
+
+    /**
+     * Proxy asset image bytes from Share Fair API (supports R2-backed items.images).
+     */
+    public function assetImage(int $id, int $itemId, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+
+        $item = Item::query()
+            ->where('case_id', $id)
+            ->where('id', $itemId)
+            ->first(['id', 'images']);
+
+        if (!$item || !$item->images) {
+            abort(404);
+        }
+
+        $stored = trim((string) $item->images);
+        if (str_starts_with($stored, 'http://') || str_starts_with($stored, 'https://')) {
+            return redirect()->away($stored);
+        }
+
+        try {
+            return $shareFairApi->proxyItemImage($id, $itemId);
+        } catch (ShareFairApiException $e) {
+            abort($e->status >= 400 && $e->status < 600 ? $e->status : 404);
+        }
+    }
+
+    /**
+     * Case-level comments (proxied from Share Fair; item_id null).
+     */
+    public function caseComments(Request $request, int $id, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+
+        $validated = $request->validate([
+            'page' => 'nullable|integer|min:1',
+            'limit' => 'nullable|integer|min:1|max:50',
+            'sort_order' => 'nullable|in:asc,desc',
+            'search' => 'nullable|string|max:100',
+        ]);
+
+        try {
+            $payload = $shareFairApi->getCaseComments(
+                $id,
+                (int) ($validated['page'] ?? 1),
+                (int) ($validated['limit'] ?? 20),
+                (string) ($validated['sort_order'] ?? 'desc'),
+                isset($validated['search']) ? trim((string) $validated['search']) : null
+            );
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return $this->commentsListResponse($payload);
+    }
+
+    /**
+     * Add a case-level comment.
+     */
+    public function storeCaseComment(Request $request, int $id, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+
+        $validated = $request->validate([
+            'comment' => 'required|string|min:1|max:5000',
+        ]);
+
+        try {
+            $payload = $shareFairApi->createCaseComment($id, trim($validated['comment']));
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $payload['message'] ?? 'Comment added successfully',
+            'comment' => $payload['data'] ?? null,
+        ], 201);
+    }
+
+    /**
+     * Replies for a case-level comment.
+     */
+    public function caseCommentResponses(
+        Request $request,
+        int $id,
+        int $commentId,
+        ShareFairApiService $shareFairApi
+    ) {
+        $this->findAccessibleCase($id);
+        $this->assertCaseLevelComment($id, $commentId);
+
+        $validated = $request->validate([
+            'page' => 'nullable|integer|min:1',
+            'limit' => 'nullable|integer|min:1|max:50',
+            'sort_order' => 'nullable|in:asc,desc',
+        ]);
+
+        try {
+            $payload = $shareFairApi->getCommentResponses(
+                $id,
+                $commentId,
+                (int) ($validated['page'] ?? 1),
+                (int) ($validated['limit'] ?? 20),
+                (string) ($validated['sort_order'] ?? 'desc')
+            );
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return $this->commentsListResponse($payload);
+    }
+
+    /**
+     * Add a reply to a case-level comment.
+     */
+    public function storeCaseCommentResponse(
+        Request $request,
+        int $id,
+        int $commentId,
+        ShareFairApiService $shareFairApi
+    ) {
+        $this->findAccessibleCase($id);
+        $this->assertCaseLevelComment($id, $commentId);
+
+        $validated = $request->validate([
+            'comment' => 'required|string|min:1|max:5000',
+        ]);
+
+        try {
+            $payload = $shareFairApi->createCommentResponse($id, $commentId, trim($validated['comment']));
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $payload['message'] ?? 'Response added successfully',
+            'comment' => $payload['data'] ?? null,
+        ], 201);
+    }
+
+    public function likeCaseComment(int $id, int $commentId, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+        $this->assertCommentBelongsToCase($id, $commentId);
+
+        try {
+            $payload = $shareFairApi->likeComment($id, $commentId);
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'likes_count' => (int) ($payload['likes_count'] ?? 0),
+            'liked_by_me' => (bool) ($payload['liked_by_me'] ?? true),
+        ]);
+    }
+
+    public function unlikeCaseComment(int $id, int $commentId, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+        $this->assertCommentBelongsToCase($id, $commentId);
+
+        try {
+            $payload = $shareFairApi->unlikeComment($id, $commentId);
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'likes_count' => (int) ($payload['likes_count'] ?? 0),
+            'liked_by_me' => (bool) ($payload['liked_by_me'] ?? false),
+        ]);
+    }
+
+    /**
+     * Asset-scoped comments (proxied from Share Fair).
+     */
+    public function assetComments(Request $request, int $id, int $itemId, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+        $this->assertAssetBelongsToCase($id, $itemId);
+
+        $validated = $request->validate([
+            'page' => 'nullable|integer|min:1',
+            'limit' => 'nullable|integer|min:1|max:50',
+            'sort_order' => 'nullable|in:asc,desc',
+            'search' => 'nullable|string|max:100',
+        ]);
+
+        try {
+            $payload = $shareFairApi->getAssetComments(
+                $id,
+                $itemId,
+                (int) ($validated['page'] ?? 1),
+                (int) ($validated['limit'] ?? 20),
+                (string) ($validated['sort_order'] ?? 'desc'),
+                isset($validated['search']) ? trim((string) $validated['search']) : null
+            );
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return $this->commentsListResponse($payload);
+    }
+
+    public function storeAssetComment(Request $request, int $id, int $itemId, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+        $this->assertAssetBelongsToCase($id, $itemId);
+
+        $validated = $request->validate([
+            'comment' => 'required|string|min:1|max:5000',
+        ]);
+
+        try {
+            $payload = $shareFairApi->createAssetComment($id, $itemId, trim($validated['comment']));
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $payload['message'] ?? 'Comment added successfully',
+            'comment' => $payload['data'] ?? null,
+        ], 201);
+    }
+
+    /**
+     * Replies for an asset comment.
+     */
+    public function assetCommentResponses(
+        Request $request,
+        int $id,
+        int $itemId,
+        int $commentId,
+        ShareFairApiService $shareFairApi
+    ) {
+        $this->findAccessibleCase($id);
+        $this->assertAssetBelongsToCase($id, $itemId);
+        $this->assertAssetComment($id, $itemId, $commentId);
+
+        $validated = $request->validate([
+            'page' => 'nullable|integer|min:1',
+            'limit' => 'nullable|integer|min:1|max:50',
+            'sort_order' => 'nullable|in:asc,desc',
+        ]);
+
+        try {
+            $payload = $shareFairApi->getCommentResponses(
+                $id,
+                $commentId,
+                (int) ($validated['page'] ?? 1),
+                (int) ($validated['limit'] ?? 20),
+                (string) ($validated['sort_order'] ?? 'desc')
+            );
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return $this->commentsListResponse($payload);
+    }
+
+    public function storeAssetCommentResponse(
+        Request $request,
+        int $id,
+        int $itemId,
+        int $commentId,
+        ShareFairApiService $shareFairApi
+    ) {
+        $this->findAccessibleCase($id);
+        $this->assertAssetBelongsToCase($id, $itemId);
+        $this->assertAssetComment($id, $itemId, $commentId);
+
+        $validated = $request->validate([
+            'comment' => 'required|string|min:1|max:5000',
+        ]);
+
+        try {
+            $payload = $shareFairApi->createCommentResponse($id, $commentId, trim($validated['comment']));
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $payload['message'] ?? 'Response added successfully',
+            'comment' => $payload['data'] ?? null,
+        ], 201);
+    }
+
+    /**
+     * Asset-scoped activity timeline (proxied from Share Fair).
+     */
+    public function assetTimeline(Request $request, int $id, int $itemId, ShareFairApiService $shareFairApi)
+    {
+        $this->findAccessibleCase($id);
+        $this->assertAssetBelongsToCase($id, $itemId);
+
+        $validated = $request->validate([
+            'page' => 'nullable|integer|min:1',
+            'limit' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        try {
+            $payload = $shareFairApi->getAssetActivities(
+                $id,
+                $itemId,
+                (int) ($validated['page'] ?? 1),
+                (int) ($validated['limit'] ?? 10)
+            );
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        $data = $payload['data'] ?? [];
+
+        return response()->json([
+            'status' => true,
+            'activities' => $data['activities'] ?? [],
+            'pagination' => [
+                'current_page' => (int) ($data['page'] ?? 1),
+                'last_page' => (int) ($data['total_pages'] ?? 0),
+                'per_page' => (int) ($data['limit'] ?? 10),
+                'total' => (int) ($data['total_count'] ?? 0),
+            ],
+        ]);
+    }
+
+    private function assertAssetBelongsToCase(int $caseId, int $itemId): void
+    {
+        $exists = Item::query()
+            ->where('case_id', $caseId)
+            ->where('id', $itemId)
+            ->exists();
+
+        if (!$exists) {
+            abort(404, 'Asset not found for this case.');
+        }
+    }
+
+    private function commentsListResponse(array $payload): \Illuminate\Http\JsonResponse
+    {
+        $data = $payload['data'] ?? [];
+
+        return response()->json([
+            'status' => true,
+            'comments' => $data['comments'] ?? [],
+            'pagination' => [
+                'current_page' => (int) ($data['page'] ?? 1),
+                'last_page' => (int) ($data['total_pages'] ?? 0),
+                'per_page' => (int) ($data['limit'] ?? 20),
+                'total' => (int) ($data['total_count'] ?? 0),
+            ],
+        ]);
+    }
+
+    private function assertCommentBelongsToCase(int $caseId, int $commentId): void
+    {
+        $exists = DB::table('comments')
+            ->where('case_id', $caseId)
+            ->where('id', $commentId)
+            ->exists();
+
+        if (!$exists) {
+            abort(404, 'Comment not found for this case.');
+        }
+    }
+
+    private function assertCaseLevelComment(int $caseId, int $commentId): void
+    {
+        $exists = DB::table('comments')
+            ->where('case_id', $caseId)
+            ->where('id', $commentId)
+            ->whereNull('item_id')
+            ->exists();
+
+        if (!$exists) {
+            abort(404, 'Case comment not found.');
+        }
+    }
+
+    private function assertAssetComment(int $caseId, int $itemId, int $commentId): void
+    {
+        $exists = DB::table('comments')
+            ->where('case_id', $caseId)
+            ->where('id', $commentId)
+            ->where('item_id', $itemId)
+            ->exists();
+
+        if (!$exists) {
+            abort(404, 'Asset comment not found.');
+        }
     }
 
     /**
@@ -1303,6 +1774,7 @@ class CaseController extends Controller
         $activities = DB::table('case_activity')
             ->leftJoin('users', 'case_activity.created_by', '=', 'users.id')
             ->where('case_activity.case_id', $caseId)
+            ->whereNull('case_activity.item_id')
             ->orderBy('case_activity.created_date', 'desc')
             ->select('case_activity.*', 'users.name as user_name')
             ->paginate(10);
@@ -1445,6 +1917,7 @@ class CaseController extends Controller
             : ($item->assigned_to_user_id ? '#' . $item->assigned_to_user_id : '—');
 
         return [
+            'id' => $item->id,
             'index' => $index,
             'name' => $item->name ?? '—',
             'location' => $locationLabel,
@@ -1465,6 +1938,27 @@ class CaseController extends Controller
             'assigned_reason' => $item->assigned_reason ?: '—',
             'status' => $label($item->status),
         ];
+    }
+
+    private function formatCaseAssetDetail(Item $item, $labels): array
+    {
+        $row = $this->formatCaseAssetRow($item, $labels, 0);
+        unset($row['index']);
+
+        $hasImage = filled($item->images);
+        $row['description'] = $item->description ?: '—';
+        $row['notes'] = $item->notes ?: '—';
+        $row['tags'] = $item->tags ?: '—';
+        $row['model'] = $item->model ?: '—';
+        $row['serial_number'] = $item->serial_number ?: '—';
+        $row['quantity'] = $item->quantity ?? 1;
+        $row['links'] = $item->links ?: '—';
+        $row['has_image'] = $hasImage;
+        $row['image_url'] = $hasImage
+            ? route('admin.cases.assets.image', ['id' => $item->case_id, 'itemId' => $item->id])
+            : null;
+
+        return $row;
     }
 
     private function caseAssetFilterOptions(int $caseId): array

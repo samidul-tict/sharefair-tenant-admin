@@ -393,6 +393,160 @@ class ShareFairApiService
         return $this->normalizeDistributePreviewPayload($caseId, $payload);
     }
 
+    /**
+     * Stream an item image from the Share Fair API (auth + R2/legacy proxy).
+     */
+    public function proxyItemImage(int $caseId, int $itemId)
+    {
+        $token = $this->token();
+        if (!$token) {
+            throw new ShareFairApiException('API session expired. Please sign in again.', 401);
+        }
+
+        try {
+            $token = $this->token();
+            $timeout = (int) config('services.sharefair.timeout', 15);
+            $response = Http::withToken($token)
+                ->baseUrl($this->baseUrl())
+                ->timeout($timeout)
+                ->accept('*/*')
+                ->get("/items/case/{$caseId}/items/{$itemId}/image");
+        } catch (ConnectionException) {
+            throw new ShareFairApiException('Unable to reach Share Fair API. Please try again.', 503);
+        }
+
+        if (!$response->successful()) {
+            throw new ShareFairApiException(
+                'Unable to load asset image.',
+                $response->status() ?: 404,
+                $response->json()
+            );
+        }
+
+        $contentType = $response->header('Content-Type') ?: 'image/jpeg';
+
+        return response($response->body(), 200, [
+            'Content-Type' => $contentType,
+            'Cache-Control' => 'private, max-age=300',
+        ]);
+    }
+
+    public function getAssetComments(
+        int $caseId,
+        int $itemId,
+        int $page = 1,
+        int $limit = 20,
+        string $sortOrder = 'desc',
+        ?string $search = null
+    ): array {
+        $query = [
+            'item_id' => $itemId,
+            'page' => $page,
+            'limit' => $limit,
+            'sort_order' => $sortOrder === 'asc' ? 'asc' : 'desc',
+        ];
+        if ($search !== null && $search !== '') {
+            $query['search'] = $search;
+        }
+
+        return $this->request(
+            fn (PendingRequest $client) => $client->get("/cases/{$caseId}/comments", $query)
+        );
+    }
+
+    public function getCaseComments(
+        int $caseId,
+        int $page = 1,
+        int $limit = 20,
+        string $sortOrder = 'desc',
+        ?string $search = null
+    ): array {
+        $query = [
+            'page' => $page,
+            'limit' => $limit,
+            'sort_order' => $sortOrder === 'asc' ? 'asc' : 'desc',
+        ];
+        if ($search !== null && $search !== '') {
+            $query['search'] = $search;
+        }
+
+        return $this->request(
+            fn (PendingRequest $client) => $client->get("/cases/{$caseId}/comments", $query)
+        );
+    }
+
+    public function createCaseComment(int $caseId, string $comment): array
+    {
+        return $this->request(
+            fn (PendingRequest $client) => $client->post("/cases/{$caseId}/comments", [
+                'comment' => $comment,
+                'type' => 'C',
+            ])
+        );
+    }
+
+    public function createAssetComment(int $caseId, int $itemId, string $comment): array
+    {
+        return $this->request(
+            fn (PendingRequest $client) => $client->post("/cases/{$caseId}/comments", [
+                'comment' => $comment,
+                'type' => 'A',
+                'item_id' => $itemId,
+            ])
+        );
+    }
+
+    public function createCommentResponse(int $caseId, int $commentId, string $comment): array
+    {
+        return $this->request(
+            fn (PendingRequest $client) => $client->post("/cases/{$caseId}/comments/{$commentId}/responses", [
+                'comment' => $comment,
+            ])
+        );
+    }
+
+    public function getCommentResponses(
+        int $caseId,
+        int $commentId,
+        int $page = 1,
+        int $limit = 20,
+        string $sortOrder = 'desc'
+    ): array {
+        return $this->request(
+            fn (PendingRequest $client) => $client->get("/cases/{$caseId}/comments/{$commentId}/responses", [
+                'page' => $page,
+                'limit' => $limit,
+                'sort_order' => $sortOrder === 'asc' ? 'asc' : 'desc',
+            ])
+        );
+    }
+
+    public function likeComment(int $caseId, int $commentId): array
+    {
+        return $this->request(
+            fn (PendingRequest $client) => $client->post("/cases/{$caseId}/comments/{$commentId}/like")
+        );
+    }
+
+    public function unlikeComment(int $caseId, int $commentId): array
+    {
+        return $this->request(
+            fn (PendingRequest $client) => $client->delete("/cases/{$caseId}/comments/{$commentId}/like")
+        );
+    }
+
+    public function getAssetActivities(int $caseId, int $itemId, int $page = 1, int $limit = 10): array
+    {
+        return $this->request(
+            fn (PendingRequest $client) => $client->get("/case-activity/case/{$caseId}/activities", [
+                'item_id' => $itemId,
+                'page' => $page,
+                'limit' => $limit,
+                'sort_order' => 'desc',
+            ])
+        );
+    }
+
     private function forgetDistributePreviewCache(int $caseId): void
     {
         $token = $this->token();
