@@ -350,12 +350,43 @@ class ShareFairApiService
         return in_array((string) $code, ['BRD_OTHR', 'OTHER'], true);
     }
 
-    public function distributeCase(int $caseId): array
+    public function distributeCase(int $caseId, ?array $assignments = null): array
     {
-        $payload = $this->request(
-            fn (PendingRequest $client) => $client->post("/cases/{$caseId}/items/distribute")
-        );
+        $payload = $this->request(function (PendingRequest $client) use ($caseId, $assignments) {
+            $request = $client->asJson();
+            $body = [];
+            if (!empty($assignments)) {
+                $body['assignments'] = array_values($assignments);
+            }
 
+            return $request->post("/cases/{$caseId}/items/distribute", $body);
+        });
+
+        $this->forgetDistributePreviewCache($caseId);
+
+        return $payload;
+    }
+
+    /**
+     * Persist attorney remapping of marital allocations while case is PEND_APP.
+     *
+     * @param  array<int, array{item_id: int, assigned_to_user_id: int, allocation_reason?: string}>  $assignments
+     */
+    public function adjustDistributedCase(int $caseId, array $assignments): array
+    {
+        $payload = $this->request(function (PendingRequest $client) use ($caseId, $assignments) {
+            return $client->asJson()->post("/cases/{$caseId}/items/distribute/adjust", [
+                'assignments' => array_values($assignments),
+            ]);
+        });
+
+        $this->forgetDistributePreviewCache($caseId);
+
+        return $payload;
+    }
+
+    private function forgetDistributePreviewCache(int $caseId): void
+    {
         $token = $this->token();
         if ($token) {
             Cache::forget(sprintf(
@@ -364,8 +395,6 @@ class ShareFairApiService
                 substr(hash('sha256', $token), 0, 16)
             ));
         }
-
-        return $payload;
     }
 
     protected function request(callable $callback): array

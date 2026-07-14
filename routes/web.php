@@ -57,6 +57,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/admin/cases/{id}/distribute', [AdminCaseController::class, 'distributeReview'])->name('admin.cases.distribute.review');
     Route::get('/admin/cases/{id}/distribute/download', [AdminCaseController::class, 'distributeDownload'])->name('admin.cases.distribute.download');
     Route::post('/admin/cases/{id}/distribute/email', [AdminCaseController::class, 'distributeEmail'])->name('admin.cases.distribute.email');
+    Route::post('/admin/cases/{id}/distribute/adjust-draft', [AdminCaseController::class, 'distributeAdjustDraft'])->name('admin.cases.distribute.adjustDraft');
+    Route::delete('/admin/cases/{id}/distribute/adjust-draft', [AdminCaseController::class, 'clearDistributeAdjustDraft'])->name('admin.cases.distribute.adjustDraft.clear');
     Route::get('/admin/cases/{id}/distribute/preview', [AdminCaseController::class, 'distributePreview'])->name('admin.cases.distribute.preview');
     Route::post('/admin/cases/{id}/distribute', [AdminCaseController::class, 'distribute'])->name('admin.cases.distribute');
     Route::get('/admin/cases/{id}/assets', [AdminCaseController::class, 'listAssets'])->name('admin.cases.assets.list');

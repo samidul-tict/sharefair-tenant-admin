@@ -63,7 +63,9 @@
               esc(item.allocation_reason) +
               '</span>'
             : '';
-        var brand = item.brand ? '<span class="cs-dist-item-brand">' + esc(item.brand) + '</span>' : '';
+        var brand = item.brand || item.brand_name
+            ? '<span class="cs-dist-item-brand">' + esc(item.brand || item.brand_name) + '</span>'
+            : '';
 
         return (
             '<div class="cs-dist-item-row">' +
@@ -252,18 +254,36 @@
         var pageScope = rootEl.closest('.cs-distribute-page') || document;
         var previewUrl = rootEl.getAttribute('data-preview-url');
         var distributeUrl = rootEl.getAttribute('data-distribute-url');
+        var adjustDraftUrl = rootEl.getAttribute('data-adjust-draft-url');
         var emailUrl = rootEl.getAttribute('data-email-url');
         var successUrl = rootEl.getAttribute('data-success-url');
         var csrfToken = rootEl.getAttribute('data-csrf-token') || '';
         var canConfirm = rootEl.getAttribute('data-can-confirm') === '1';
+        var canAdjust = rootEl.getAttribute('data-can-adjust') === '1';
+        var showCaps = rootEl.getAttribute('data-show-caps') === '1';
+        var capPl = rootEl.getAttribute('data-cap-pl');
+        var capDef = rootEl.getAttribute('data-cap-def');
+        var valueCaps = {
+            PL: capPl !== '' && capPl != null ? Number(capPl) : null,
+            DEF: capDef !== '' && capDef != null ? Number(capDef) : null,
+        };
 
         var loadingEl = rootEl.querySelector('[data-dist-loading]');
         var errorEl = rootEl.querySelector('[data-dist-error]');
         var summaryRoot = rootEl.querySelector('[data-dist-summary]');
+        var adjustRoot = rootEl.querySelector('[data-dist-adjust]');
+        var adjustBoard = rootEl.querySelector('[data-dist-adjust-board]');
+        var adjustCapsEl = rootEl.querySelector('[data-dist-adjust-caps]');
         var statsEl = rootEl.querySelector('[data-dist-stats]');
         var confirmBtn = rootEl.querySelector('[data-dist-confirm]');
         var reviewCheckbox = rootEl.querySelector('[data-dist-reviewed]');
+        var adjustOpenBtn = pageScope.querySelector('[data-dist-adjust-open]');
+        var actionsAside = pageScope.querySelector('.cs-distribute-page-actions');
         var previewOk = false;
+        var currentData = null;
+        var pendingAssignments = null;
+        var adjustState = null;
+        var dragItemId = null;
 
         initDistDownloadMenus(pageScope);
         initDistEmailModal(
@@ -277,6 +297,54 @@
             if (!confirmBtn) return;
             var reviewed = reviewCheckbox ? reviewCheckbox.checked : true;
             confirmBtn.disabled = !(previewOk && reviewed);
+        }
+
+        function itemPriceNum(item) {
+            var raw =
+                item.concluded_price != null && item.concluded_price !== ''
+                    ? item.concluded_price
+                    : item.purchase_price;
+            return raw != null && raw !== '' ? Number(raw) : 0;
+        }
+
+        function itemBrand(item) {
+            return item.brand || item.brand_name || '';
+        }
+
+        function cloneData(d) {
+            return JSON.parse(JSON.stringify(d || {}));
+        }
+
+        function buildAssignmentsFromAllocations(allocations) {
+            var assignments = [];
+            Object.keys(allocations || {}).forEach(function (key) {
+                var alloc = allocations[key] || {};
+                var userId = Number(alloc.user_id || 0);
+                (alloc.items || []).forEach(function (item) {
+                    var itemId = Number(item.id || item.item_id || 0);
+                    if (!itemId || !userId) return;
+                    assignments.push({
+                        item_id: itemId,
+                        assigned_to_user_id: userId,
+                        allocation_reason: item.allocation_reason || 'Attorney Adjusted',
+                    });
+                });
+            });
+            return assignments;
+        }
+
+        function recalculateAllocations(allocations, target) {
+            Object.keys(allocations || {}).forEach(function (key) {
+                var alloc = allocations[key];
+                var items = alloc.items || [];
+                var received = items.reduce(function (sum, item) {
+                    return sum + itemPriceNum(item);
+                }, Number(alloc.carry_forward_value || 0));
+                alloc.allocated_item_count = items.length;
+                alloc.allocated_value = Math.round(received * 100) / 100;
+                alloc.value_difference = Math.round((received - Number(target || 0)) * 100) / 100;
+            });
+            return allocations;
         }
 
         function setDistTab(tabId) {
@@ -442,6 +510,7 @@
         }
 
         function renderDistributionSummary(d) {
+            currentData = cloneData(d);
             if (statsEl) statsEl.innerHTML = renderSummaryStats(d, canConfirm);
             updateTabCounts(d);
             renderPanels(d);
@@ -465,6 +534,445 @@
             }
         }
 
+        function availablePoolItems(d) {
+            var assignedIds = {};
+            Object.keys(d.allocations || {}).forEach(function (key) {
+                ((d.allocations[key] || {}).items || []).forEach(function (item) {
+                    var id = Number(item.id || item.item_id || 0);
+                    if (id) assignedIds[id] = true;
+                });
+            });
+
+            var pool = [];
+            function pushPool(list) {
+                (list || []).forEach(function (item) {
+                    var id = Number(item.id || item.item_id || 0);
+                    if (!id || assignedIds[id]) return;
+                    var reason = String(item.allocation_reason || '').toLowerCase();
+                    if (reason.indexOf('non-marital') !== -1) return;
+                    if (reason.indexOf('donation') !== -1) return;
+                    pool.push(item);
+                    assignedIds[id] = true;
+                });
+            }
+
+            // Don't Want (NONE_WNT) and other marital leftovers not held by a party.
+            pushPool(d.dont_want_items);
+            pushPool(d.unassigned_items);
+            return pool;
+        }
+
+        function participantBuckets(allocations) {
+            return Object.keys(allocations || {}).map(function (key) {
+                var alloc = allocations[key] || {};
+                return {
+                    key: key,
+                    user_id: Number(alloc.user_id || 0),
+                    user_name: alloc.user_name || alloc.user_email || 'User',
+                    user_role: (alloc.user_role || '').toUpperCase(),
+                    items: (alloc.items || []).slice(),
+                    carry_forward_value: alloc.carry_forward_value || 0,
+                };
+            }).filter(function (bucket) {
+                return bucket.user_id > 0;
+            });
+        }
+
+        function roleCap(role) {
+            if (!showCaps) return null;
+            if (role === 'PL' || role === 'CLIENT') return valueCaps.PL;
+            if (role === 'DEF' || role === 'DEFENDANT' || role === 'SPOUSE') return valueCaps.DEF;
+            return null;
+        }
+
+        function updateCapBanner(buckets) {
+            if (!adjustCapsEl) return;
+            if (!showCaps) {
+                adjustCapsEl.hidden = true;
+                return;
+            }
+            var warnings = [];
+            buckets.forEach(function (bucket) {
+                if (bucket.isPool) return;
+                var cap = roleCap(bucket.user_role);
+                if (cap == null) return;
+                var received = bucket.items.reduce(function (sum, item) {
+                    return sum + itemPriceNum(item);
+                }, Number(bucket.carry_forward_value || 0));
+                if (received > cap) {
+                    warnings.push(
+                        esc(bucket.user_name) +
+                            ' is over the value cap (' +
+                            formatMoney(received) +
+                            ' vs ' +
+                            formatMoney(cap) +
+                            ').'
+                    );
+                }
+            });
+            if (!warnings.length) {
+                adjustCapsEl.hidden = true;
+                adjustCapsEl.innerHTML = '';
+                return;
+            }
+            adjustCapsEl.hidden = false;
+            adjustCapsEl.innerHTML =
+                '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i> ' +
+                warnings.join(' ');
+        }
+
+        function findItemOwner(itemId) {
+            if (!adjustState) return null;
+            for (var i = 0; i < adjustState.buckets.length; i++) {
+                var bucket = adjustState.buckets[i];
+                for (var j = 0; j < bucket.items.length; j++) {
+                    var id = Number(bucket.items[j].id || bucket.items[j].item_id || 0);
+                    if (id === itemId) {
+                        return { bucketIndex: i, itemIndex: j, item: bucket.items[j] };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function moveItemToBucket(itemId, targetKey) {
+            var found = findItemOwner(itemId);
+            if (!found || !adjustState) return;
+            var targetBucket = adjustState.buckets.find(function (bucket) {
+                return bucket.key === targetKey;
+            });
+            if (!targetBucket) return;
+            if (adjustState.buckets[found.bucketIndex].key === targetKey) return;
+
+            var item = found.item;
+            adjustState.buckets[found.bucketIndex].items.splice(found.itemIndex, 1);
+            if (!targetBucket.isPool) {
+                item.allocation_reason = 'Attorney Adjusted';
+            }
+            targetBucket.items.push(item);
+            renderAdjustBoard();
+        }
+
+        function moveOptionsHtml(currentKey) {
+            return adjustState.buckets
+                .filter(function (other) {
+                    return other.key !== currentKey;
+                })
+                .map(function (other) {
+                    return (
+                        '<option value="' +
+                        esc(other.key) +
+                        '">' +
+                        esc(other.user_name) +
+                        '</option>'
+                    );
+                })
+                .join('');
+        }
+
+        function renderAdjustColumn(bucket, target) {
+            var isPool = !!bucket.isPool;
+            var received = bucket.items.reduce(function (sum, item) {
+                return sum + itemPriceNum(item);
+            }, Number(bucket.carry_forward_value || 0));
+            var diff = received - target;
+            var cap = isPool ? null : roleCap(bucket.user_role);
+            var overCap = cap != null && received > cap;
+            var moveOptions = moveOptionsHtml(bucket.key);
+
+            var rows =
+                bucket.items.length === 0
+                    ? '<tr class="cs-dist-adjust-empty-row"><td colspan="5">' +
+                      (isPool
+                          ? 'No unassigned marital assets. Drop assets here to unassign.'
+                          : 'No assets in this bucket. Drop one here.') +
+                      '</td></tr>'
+                    : bucket.items
+                          .map(function (item) {
+                              var itemId = Number(item.id || item.item_id || 0);
+                              return (
+                                  '<tr class="cs-dist-adjust-row" draggable="true" data-item-id="' +
+                                  itemId +
+                                  '">' +
+                                  '<td class="cs-dist-adjust-name">' +
+                                  '<span class="cs-dist-adjust-grip" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>' +
+                                  esc(item.name || 'Unnamed asset') +
+                                  '</td>' +
+                                  '<td>' +
+                                  esc(itemBrand(item) || '—') +
+                                  '</td>' +
+                                  '<td>' +
+                                  formatMoney(itemPriceNum(item) || null) +
+                                  '</td>' +
+                                  '<td>' +
+                                  esc(item.allocation_reason || '—') +
+                                  '</td>' +
+                                  '<td>' +
+                                  '<label class="sr-only" for="move-' +
+                                  itemId +
+                                  '">Move ' +
+                                  esc(item.name || 'asset') +
+                                  '</label>' +
+                                  '<select id="move-' +
+                                  itemId +
+                                  '" class="cs-dist-adjust-move" data-item-id="' +
+                                  itemId +
+                                  '">' +
+                                  '<option value="">Move to…</option>' +
+                                  moveOptions +
+                                  '</select>' +
+                                  '</td>' +
+                                  '</tr>'
+                              );
+                          })
+                          .join('');
+
+            var totalsHtml = isPool
+                ? '<div class="cs-dist-adjust-column-totals">' +
+                  '<div><span>Items</span><strong>' +
+                  bucket.items.length +
+                  '</strong></div>' +
+                  '<div><span>Value</span><strong>' +
+                  formatMoney(received) +
+                  '</strong></div></div>'
+                : '<div class="cs-dist-adjust-column-totals">' +
+                  '<div><span>Items</span><strong>' +
+                  bucket.items.length +
+                  '</strong></div>' +
+                  '<div><span>Received</span><strong>' +
+                  formatMoney(received) +
+                  '</strong></div>' +
+                  '<div><span>Target</span><strong>' +
+                  formatMoney(target) +
+                  '</strong></div>' +
+                  '<div><span>Diff</span><strong class="' +
+                  (diff >= 0 ? 'cs-dist-diff-pos' : 'cs-dist-diff-neg') +
+                  '">' +
+                  (diff >= 0 ? '+' : '') +
+                  formatMoney(diff) +
+                  '</strong></div>' +
+                  (cap != null
+                      ? '<div><span>Cap</span><strong>' + formatMoney(cap) + '</strong></div>'
+                      : '') +
+                  '</div>';
+
+            return (
+                '<section class="cs-dist-adjust-column' +
+                (isPool ? ' is-pool' : '') +
+                (overCap ? ' is-over-cap' : '') +
+                '" data-bucket-key="' +
+                esc(bucket.key) +
+                '">' +
+                '<header class="cs-dist-adjust-column-head">' +
+                '<div>' +
+                '<h3 class="cs-dist-adjust-column-title">' +
+                esc(bucket.user_name) +
+                '</h3>' +
+                '<p class="cs-dist-adjust-column-role">' +
+                esc(bucket.user_role || '') +
+                '</p>' +
+                '</div>' +
+                totalsHtml +
+                '</header>' +
+                '<div class="cs-dist-adjust-table-wrap">' +
+                '<table class="cs-dist-adjust-table">' +
+                '<thead><tr><th>Asset</th><th>Brand</th><th>Price</th><th>Reason</th><th>Move</th></tr></thead>' +
+                '<tbody>' +
+                rows +
+                '</tbody></table></div></section>'
+            );
+        }
+
+        function renderAdjustBoard() {
+            if (!adjustBoard || !adjustState) return;
+            var target = Number(adjustState.target || 0);
+            updateCapBanner(adjustState.buckets);
+
+            adjustBoard.innerHTML = adjustState.buckets
+                .map(function (bucket) {
+                    return renderAdjustColumn(bucket, target);
+                })
+                .join('');
+
+            bindAdjustInteractions();
+        }
+
+        function bindAdjustInteractions() {
+            if (!adjustBoard) return;
+
+            adjustBoard.querySelectorAll('.cs-dist-adjust-row').forEach(function (row) {
+                row.addEventListener('dragstart', function (e) {
+                    dragItemId = Number(row.getAttribute('data-item-id'));
+                    row.classList.add('is-dragging');
+                    if (e.dataTransfer) {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', String(dragItemId));
+                    }
+                });
+                row.addEventListener('dragend', function () {
+                    row.classList.remove('is-dragging');
+                    dragItemId = null;
+                    adjustBoard.querySelectorAll('.cs-dist-adjust-column').forEach(function (col) {
+                        col.classList.remove('is-drop-target');
+                    });
+                });
+            });
+
+            adjustBoard.querySelectorAll('.cs-dist-adjust-column').forEach(function (col) {
+                col.addEventListener('dragover', function (e) {
+                    e.preventDefault();
+                    col.classList.add('is-drop-target');
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                });
+                col.addEventListener('dragleave', function () {
+                    col.classList.remove('is-drop-target');
+                });
+                col.addEventListener('drop', function (e) {
+                    e.preventDefault();
+                    col.classList.remove('is-drop-target');
+                    var itemId = dragItemId || Number((e.dataTransfer && e.dataTransfer.getData('text/plain')) || 0);
+                    var bucketKey = col.getAttribute('data-bucket-key');
+                    if (itemId && bucketKey) moveItemToBucket(itemId, bucketKey);
+                });
+            });
+
+            adjustBoard.querySelectorAll('.cs-dist-adjust-move').forEach(function (select) {
+                select.addEventListener('change', function () {
+                    var itemId = Number(select.getAttribute('data-item-id'));
+                    var bucketKey = select.value;
+                    if (itemId && bucketKey) moveItemToBucket(itemId, bucketKey);
+                    select.value = '';
+                });
+            });
+        }
+
+        function openAdjustMode() {
+            if (!canAdjust || !currentData || !adjustRoot) return;
+            var parties = participantBuckets(currentData.allocations || {});
+            var poolItems = availablePoolItems(currentData);
+            adjustState = {
+                target: Number(currentData.target_value_per_user || 0),
+                buckets: parties.concat([
+                    {
+                        key: '__pool__',
+                        user_id: 0,
+                        user_name: 'Available marital assets',
+                        user_role: 'Don’t Want / unassigned',
+                        items: poolItems,
+                        carry_forward_value: 0,
+                        isPool: true,
+                    },
+                ]),
+            };
+            if (!parties.length) {
+                showError('No participants available to adjust.');
+                return;
+            }
+            if (summaryRoot) summaryRoot.hidden = true;
+            if (actionsAside) actionsAside.hidden = true;
+            adjustRoot.hidden = false;
+            renderAdjustBoard();
+            adjustRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function closeAdjustMode(restoreSummary) {
+            if (adjustRoot) adjustRoot.hidden = true;
+            if (actionsAside) actionsAside.hidden = false;
+            if (restoreSummary && summaryRoot) summaryRoot.hidden = false;
+            adjustState = null;
+        }
+
+        function applyAdjustments() {
+            if (!adjustState || !currentData || !adjustDraftUrl) return;
+            var next = cloneData(currentData);
+            var nextAllocations = {};
+            var poolItems = [];
+            adjustState.buckets.forEach(function (bucket) {
+                if (bucket.isPool) {
+                    poolItems = bucket.items.slice();
+                    return;
+                }
+                nextAllocations[bucket.key] = {
+                    user_id: bucket.user_id,
+                    user_name: bucket.user_name,
+                    user_role: bucket.user_role,
+                    user_email: (currentData.allocations[bucket.key] || {}).user_email || null,
+                    carry_forward_value: bucket.carry_forward_value,
+                    items: bucket.items,
+                };
+            });
+            next.allocations = recalculateAllocations(nextAllocations, adjustState.target);
+            next.dont_want_items = poolItems.filter(function (item) {
+                var reason = String(item.allocation_reason || '').toLowerCase();
+                return reason.indexOf("don't want") !== -1 || reason.indexOf('dont want') !== -1;
+            });
+            next.unassigned_items = poolItems.filter(function (item) {
+                var reason = String(item.allocation_reason || '').toLowerCase();
+                return reason.indexOf("don't want") === -1 && reason.indexOf('dont want') === -1;
+            });
+            pendingAssignments = buildAssignmentsFromAllocations(next.allocations);
+
+            var applyBtn = rootEl.querySelector('[data-dist-adjust-apply]');
+            if (applyBtn) {
+                applyBtn.disabled = true;
+                applyBtn.textContent = 'Saving…';
+            }
+            if (errorEl) {
+                errorEl.hidden = true;
+                errorEl.textContent = '';
+            }
+
+            fetch(adjustDraftUrl, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ assignments: pendingAssignments }),
+            })
+                .then(function (res) {
+                    return res.json().then(function (data) {
+                        return { ok: res.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (applyBtn) {
+                        applyBtn.disabled = false;
+                        applyBtn.textContent = 'Save adjustments';
+                    }
+                    if (!result.ok || !result.data.status) {
+                        showError(
+                            (result.data && result.data.message) ||
+                                'Unable to save distribution adjustments.'
+                        );
+                        return;
+                    }
+                    closeAdjustMode(false);
+                    if (result.data.data) {
+                        renderDistributionSummary(result.data.data);
+                    } else {
+                        renderDistributionSummary(next);
+                    }
+                    if (summaryRoot) {
+                        summaryRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                })
+                .catch(function () {
+                    if (applyBtn) {
+                        applyBtn.disabled = false;
+                        applyBtn.textContent = 'Save adjustments';
+                    }
+                    showError('Unable to save distribution adjustments.');
+                });
+        }
+
+        function cancelAdjustments() {
+            closeAdjustMode(true);
+            pendingAssignments = null;
+        }
+
         function loadPreview() {
             previewOk = false;
             updateConfirmState();
@@ -474,6 +982,7 @@
                 errorEl.textContent = '';
             }
             if (summaryRoot) summaryRoot.hidden = true;
+            if (adjustRoot) adjustRoot.hidden = true;
             if (reviewCheckbox) reviewCheckbox.checked = false;
 
             fetch(previewUrl, {
@@ -493,7 +1002,9 @@
                         );
                         return;
                     }
-                    renderDistributionSummary(result.data.data || {});
+                    var d = result.data.data || {};
+                    pendingAssignments = buildAssignmentsFromAllocations(d.allocations || {});
+                    renderDistributionSummary(d);
                 })
                 .catch(function () {
                     if (loadingEl) loadingEl.hidden = true;
@@ -510,6 +1021,15 @@
         if (reviewCheckbox && canConfirm) {
             reviewCheckbox.addEventListener('change', updateConfirmState);
         }
+
+        if (adjustOpenBtn && canAdjust) {
+            adjustOpenBtn.addEventListener('click', openAdjustMode);
+        }
+
+        var adjustCancelBtn = rootEl.querySelector('[data-dist-adjust-cancel]');
+        var adjustApplyBtn = rootEl.querySelector('[data-dist-adjust-apply]');
+        if (adjustCancelBtn) adjustCancelBtn.addEventListener('click', cancelAdjustments);
+        if (adjustApplyBtn) adjustApplyBtn.addEventListener('click', applyAdjustments);
 
         if (confirmBtn && canConfirm) {
             confirmBtn.addEventListener('click', function () {

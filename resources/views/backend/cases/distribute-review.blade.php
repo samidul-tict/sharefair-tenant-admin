@@ -59,6 +59,9 @@
                 @if($canConfirmDistribute ?? false)
                     Review the proposed allocation below. When you are satisfied, acknowledge the review and confirm division.
                     This action cannot be undone.
+                @elseif($canAdjustDistribute ?? false)
+                    Assets have been distributed and this case is pending approval.
+                    You can adjust marital asset assignments between participants if needed.
                 @else
                     Review how assets are allocated across participants for this case.
                 @endif
@@ -94,10 +97,15 @@
             class="cs-distribute-page-app"
             data-preview-url="{{ route('admin.cases.distribute.preview', $case->id) }}"
             data-distribute-url="{{ route('admin.cases.distribute', $case->id) }}"
+            data-adjust-draft-url="{{ route('admin.cases.distribute.adjustDraft', $case->id) }}"
             data-email-url="{{ route('admin.cases.distribute.email', $case->id) }}"
             data-success-url="{{ route('admin.cases.show', ['id' => $case->id, 'distributed' => 1]) }}"
             data-csrf-token="{{ csrf_token() }}"
             data-can-confirm="{{ ($canConfirmDistribute ?? false) ? '1' : '0' }}"
+            data-can-adjust="{{ ($canAdjustDistribute ?? false) ? '1' : '0' }}"
+            data-show-caps="{{ ($showDistributionCaps ?? false) ? '1' : '0' }}"
+            data-cap-pl="{{ isset($distributionValueCaps['PL']) && $distributionValueCaps['PL']->distribution_value_cap !== null ? (float) $distributionValueCaps['PL']->distribution_value_cap : '' }}"
+            data-cap-def="{{ isset($distributionValueCaps['DEF']) && $distributionValueCaps['DEF']->distribution_value_cap !== null ? (float) $distributionValueCaps['DEF']->distribution_value_cap : '' }}"
         >
             <div class="cs-distribute-preview" data-dist-loading>
                 <p class="cs-distribute-preview-status"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Loading distribution preview…</p>
@@ -122,6 +130,21 @@
                     <div class="cs-dist-panel" role="tabpanel" id="dist-panel-dont_want" aria-labelledby="dist-tab-dont_want" data-dist-panel="dont_want" hidden></div>
                     <div class="cs-dist-panel" role="tabpanel" id="dist-panel-donations" aria-labelledby="dist-tab-donations" data-dist-panel="donations" hidden></div>
                 </div>
+            </div>
+
+            <div class="cs-dist-adjust-root" data-dist-adjust hidden>
+                <div class="cs-dist-adjust-header">
+                    <div>
+                        <h2 class="cs-dist-adjust-title">Adjust distribution</h2>
+                        <p class="cs-dist-adjust-lead">Drag assets between participants or from Available marital assets (Don’t Want and other unassigned marital leftovers). Use Move to when needed.</p>
+                    </div>
+                    <div class="cs-dist-adjust-actions">
+                        <button type="button" class="cs-btn-secondary" data-dist-adjust-cancel>Cancel</button>
+                        <button type="button" class="cs-btn-primary" data-dist-adjust-apply>Save adjustments</button>
+                    </div>
+                </div>
+                <div class="cs-dist-adjust-cap-banner" data-dist-adjust-caps hidden role="status"></div>
+                <div class="cs-dist-adjust-board" data-dist-adjust-board></div>
             </div>
 
             @if($canConfirmDistribute ?? false)
@@ -150,6 +173,35 @@
                     </button>
                     <a href="{{ route('admin.cases.show', $case->id) }}" class="cs-btn-secondary">Cancel</a>
                     <button type="button" class="cs-btn-primary cs-btn-distribute-confirm" data-dist-confirm disabled>Confirm division</button>
+                </div>
+            </aside>
+            @elseif($canAdjustDistribute ?? false)
+            <aside class="cs-distribute-page-actions" aria-label="Distribution actions">
+                <p class="cs-dist-adjust-hint">This case is pending approval. You can adjust marital asset assignments below.</p>
+                <div class="cs-distribute-page-action-buttons">
+                    <button type="button" class="cs-btn-secondary" data-dist-adjust-open>
+                        <i class="fas fa-random" aria-hidden="true"></i> Adjust distribution
+                    </button>
+                    <div class="cs-dist-download-wrap cs-dist-download-wrap-inline">
+                        <button type="button" class="cs-btn-secondary cs-dist-download-toggle" data-dist-download-toggle aria-expanded="false" aria-haspopup="true">
+                            <i class="fas fa-download" aria-hidden="true"></i> Download
+                            <i class="fas fa-chevron-down cs-dist-download-caret" aria-hidden="true"></i>
+                        </button>
+                        <div class="cs-dist-download-menu" data-dist-download-menu hidden>
+                            <a href="{{ route('admin.cases.distribute.download', ['id' => $case->id, 'format' => 'pdf']) }}" class="cs-dist-download-option">
+                                <i class="fas fa-file-pdf" aria-hidden="true"></i> PDF
+                            </a>
+                            <a href="{{ route('admin.cases.distribute.download', ['id' => $case->id, 'format' => 'excel']) }}" class="cs-dist-download-option">
+                                <i class="fas fa-file-excel" aria-hidden="true"></i> Excel
+                            </a>
+                        </div>
+                    </div>
+                    <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
+                        <i class="fas fa-envelope" aria-hidden="true"></i> Email
+                    </button>
+                    <a href="{{ route('admin.cases.show', $case->id) }}" class="cs-btn-secondary">
+                        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to case
+                    </a>
                 </div>
             </aside>
             @else

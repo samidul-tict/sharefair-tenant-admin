@@ -123,4 +123,13 @@ class CourtCase extends Model
         return $this->case_status_value === 'PEND_DIS'
             && !($this->distribute_by_client === true);
     }
+
+    /**
+     * Legal representative may adjust marital allocations while pending approval.
+     */
+    public function canLegalRepresentativeAdjustDistribution(): bool
+    {
+        return $this->case_status_value === 'PEND_APP'
+            && !($this->distribute_by_client === true);
+    }
 }

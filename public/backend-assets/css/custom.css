@@ -1332,6 +1332,179 @@ a.text-info:hover {
 .cs-distribute-page-actions-readonly {
     justify-content: flex-end;
 }
+.cs-dist-adjust-hint {
+    margin: 0 0 0.85rem;
+    font-size: 0.875rem;
+    color: var(--cs-muted, #64748b);
+}
+    margin-top: 1rem;
+    padding: 1.1rem 1.2rem 1.35rem;
+    border: 1px solid var(--cs-border);
+    border-radius: 14px;
+    background: #fff;
+}
+.cs-dist-adjust-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+.cs-dist-adjust-title {
+    margin: 0 0 0.25rem;
+    font-size: 1.2rem;
+    color: var(--cs-text, #0f172a);
+}
+.cs-dist-adjust-lead {
+    margin: 0;
+    color: var(--cs-muted, #64748b);
+    font-size: 0.9rem;
+}
+.cs-dist-adjust-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+.cs-dist-adjust-cap-banner {
+    margin: 0 0 0.9rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 10px;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    color: #9a3412;
+    font-size: 0.875rem;
+}
+.cs-dist-adjust-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.cs-dist-adjust-column {
+    border: 1px solid var(--cs-border);
+    border-radius: 12px;
+    background: #f8fafc;
+    min-height: 220px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cs-dist-adjust-column.is-drop-target {
+    border-color: #4f46e5;
+    box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.25);
+}
+.cs-dist-adjust-column.is-over-cap {
+    border-color: #f97316;
+}
+.cs-dist-adjust-column.is-pool {
+    border-style: dashed;
+    background: #fffbeb;
+}
+.cs-dist-adjust-column.is-pool .cs-dist-adjust-column-head {
+    background: #fef3c7;
+}
+.cs-dist-adjust-column-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--cs-border);
+    background: #fff;
+    border-radius: 12px 12px 0 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.cs-dist-adjust-column-title {
+    margin: 0;
+    font-size: 1rem;
+}
+.cs-dist-adjust-column-role {
+    margin: 0.15rem 0 0;
+    color: var(--cs-muted, #64748b);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.cs-dist-adjust-column-totals {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem 0.75rem;
+}
+.cs-dist-adjust-column-totals div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+.cs-dist-adjust-column-totals span {
+    font-size: 0.7rem;
+    color: var(--cs-muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.cs-dist-adjust-column-totals strong {
+    font-size: 0.9rem;
+}
+.cs-dist-adjust-table-wrap {
+    overflow: auto;
+    max-height: 26rem;
+}
+.cs-dist-adjust-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+.cs-dist-adjust-table th,
+.cs-dist-adjust-table td {
+    padding: 0.55rem 0.65rem;
+    border-top: 1px solid #e2e8f0;
+    text-align: left;
+    vertical-align: top;
+}
+.cs-dist-adjust-table th {
+    background: #eef2ff;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #475569;
+}
+.cs-dist-adjust-row {
+    cursor: grab;
+    background: #fff;
+}
+.cs-dist-adjust-row.is-dragging {
+    opacity: 0.55;
+}
+.cs-dist-adjust-name {
+    min-width: 8rem;
+}
+.cs-dist-adjust-grip {
+    display: inline-flex;
+    margin-right: 0.4rem;
+    color: #94a3b8;
+}
+.cs-dist-adjust-move {
+    width: 100%;
+    min-width: 7rem;
+    max-width: 10rem;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 0.75rem;
+}
+.cs-dist-adjust-empty-row td {
+    color: #64748b;
+    font-style: italic;
+    text-align: center;
+}
+@media (max-width: 768px) {
+    .cs-dist-adjust-header {
+        flex-direction: column;
+    }
+    .cs-dist-adjust-board {
+        grid-template-columns: 1fr;
+    }
+}
 .cs-dist-download-wrap {
     position: relative;
     display: inline-flex;

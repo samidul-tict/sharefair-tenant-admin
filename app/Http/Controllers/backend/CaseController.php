@@ -248,6 +248,7 @@ class CaseController extends Controller
         $case->load(['caseType', 'caseStatus']);
 
         $canConfirmDistribute = $case->canLegalRepresentativeDistribute();
+        $canAdjustDistribute = $case->canLegalRepresentativeAdjustDistribution();
         $emailRecipients = $this->distributionSummaryEmailRecipients($id);
         $showDistributionCaps = in_array($case->distribution_method_value, ['DIST_FCP', 'DIST_CAP'], true);
         $distributionValueCaps = CaseUserMapping::query()
@@ -259,6 +260,7 @@ class CaseController extends Controller
         return view('backend.cases.distribute-review', compact(
             'case',
             'canConfirmDistribute',
+            'canAdjustDistribute',
             'emailRecipients',
             'showDistributionCaps',
             'distributionValueCaps'
@@ -285,6 +287,64 @@ class CaseController extends Controller
         return response()->json([
             'status' => true,
             'data' => $payload['data'] ?? $payload,
+        ]);
+    }
+
+    /**
+     * Persist attorney-adjusted marital assignments while case is PEND_APP.
+     */
+    public function distributeAdjustDraft(Request $request, int $id, ShareFairApiService $shareFairApi)
+    {
+        $case = $this->findAccessibleCase($id);
+        $this->assertCanAdjustDistribution($case);
+
+        $validated = $request->validate([
+            'assignments' => 'required|array|min:1',
+            'assignments.*.item_id' => 'required|integer',
+            'assignments.*.assigned_to_user_id' => 'required|integer',
+            'assignments.*.allocation_reason' => 'nullable|string|max:255',
+        ]);
+
+        $assignments = collect($validated['assignments'])
+            ->map(fn (array $row) => [
+                'item_id' => (int) $row['item_id'],
+                'assigned_to_user_id' => (int) $row['assigned_to_user_id'],
+                'allocation_reason' => $row['allocation_reason'] ?? 'Attorney Adjusted',
+            ])
+            ->values()
+            ->all();
+
+        $this->assertValidDistributionAssignments($id, $assignments);
+
+        try {
+            $payload = $shareFairApi->adjustDistributedCase($id, $assignments);
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        session()->forget('distribute_adjust.' . $id);
+
+        return response()->json([
+            'status' => true,
+            'message' => $payload['message'] ?? 'Distribution adjusted successfully.',
+            'data' => $payload['data'] ?? null,
+        ]);
+    }
+
+    /**
+     * Clear unused local adjust draft (no-op after PEND_APP persist flow).
+     */
+    public function clearDistributeAdjustDraft(int $id)
+    {
+        $this->findAccessibleCase($id);
+        session()->forget('distribute_adjust.' . $id);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Adjustments discarded.',
         ]);
     }
 
@@ -383,14 +443,37 @@ class CaseController extends Controller
 
     /**
      * Run asset distribution for a case (proxied to Share Fair API).
+     * Optional assignments remaps marital assets before persist.
      */
-    public function distribute(int $id, ShareFairApiService $shareFairApi)
+    public function distribute(Request $request, int $id, ShareFairApiService $shareFairApi)
     {
         $case = $this->findAccessibleCase($id);
         $this->assertCanDistribute($case);
 
+        $validated = $request->validate([
+            'assignments' => 'nullable|array',
+            'assignments.*.item_id' => 'required_with:assignments|integer',
+            'assignments.*.assigned_to_user_id' => 'required_with:assignments|integer',
+            'assignments.*.allocation_reason' => 'nullable|string|max:255',
+        ]);
+
+        $assignments = collect($validated['assignments'] ?? [])
+            ->map(function (array $row) {
+                return [
+                    'item_id' => (int) $row['item_id'],
+                    'assigned_to_user_id' => (int) $row['assigned_to_user_id'],
+                    'allocation_reason' => $row['allocation_reason'] ?? 'Attorney Adjusted',
+                ];
+            })
+            ->values()
+            ->all();
+
+        if (!empty($assignments)) {
+            $this->assertValidDistributionAssignments($id, $assignments);
+        }
+
         try {
-            $payload = $shareFairApi->distributeCase($id);
+            $payload = $shareFairApi->distributeCase($id, $assignments ?: null);
         } catch (ShareFairApiException $e) {
             return response()->json([
                 'status' => false,
@@ -399,6 +482,7 @@ class CaseController extends Controller
         }
 
         $case->refresh();
+        session()->forget('distribute_adjust.' . $id);
 
         return response()->json([
             'status' => true,
@@ -406,6 +490,142 @@ class CaseController extends Controller
             'case_status_value' => $case->case_status_value,
             'data' => $payload['data'] ?? null,
         ]);
+    }
+
+    /**
+     * Ensure attorney assignment payload references this case's marital items and participants.
+     *
+     * @param  array<int, array{item_id: int, assigned_to_user_id: int, allocation_reason?: string}>  $assignments
+     */
+    private function assertValidDistributionAssignments(int $caseId, array $assignments): void
+    {
+        $itemIds = collect($assignments)->pluck('item_id')->unique()->values();
+        $userIds = collect($assignments)->pluck('assigned_to_user_id')->unique()->values();
+
+        $validItemCount = Item::query()
+            ->where('case_id', $caseId)
+            ->whereIn('id', $itemIds)
+            ->count();
+
+        if ($validItemCount !== $itemIds->count()) {
+            abort(response()->json([
+                'status' => false,
+                'message' => 'One or more assets in the adjusted assignment do not belong to this case.',
+            ], 422));
+        }
+
+        $validUserIds = CaseUserMapping::query()
+            ->where('case_id', $caseId)
+            ->where('participate_in_distribution', true)
+            ->whereIn('user_id', $userIds)
+            ->pluck('user_id')
+            ->unique();
+
+        if ($validUserIds->count() !== $userIds->count()) {
+            abort(response()->json([
+                'status' => false,
+                'message' => 'One or more assignees are not distribution participants on this case.',
+            ], 422));
+        }
+    }
+
+    /**
+     * Overlay session-adjusted marital assignments onto preview/export payloads.
+     */
+    private function applyDistributeAdjustDraft(int $caseId, array $data): array
+    {
+        $assignments = session('distribute_adjust.' . $caseId);
+        if (empty($assignments) || !is_array($assignments)) {
+            return $data;
+        }
+
+        return $this->remapAllocationData($data, $assignments);
+    }
+
+    /**
+     * @param  array<int, array{item_id: int, assigned_to_user_id: int, allocation_reason?: string}>  $assignments
+     */
+    private function remapAllocationData(array $data, array $assignments): array
+    {
+        $allocations = $data['allocations'] ?? [];
+        if (!is_array($allocations) || $allocations === []) {
+            return $data;
+        }
+
+        $itemLookup = [];
+        $userMeta = [];
+        foreach ($allocations as $key => $alloc) {
+            if (!is_array($alloc)) {
+                continue;
+            }
+            $userId = (int) ($alloc['user_id'] ?? 0);
+            if ($userId > 0) {
+                $userMeta[$userId] = [
+                    'key' => $key,
+                    'user_id' => $userId,
+                    'user_email' => $alloc['user_email'] ?? null,
+                    'user_name' => $alloc['user_name'] ?? null,
+                    'user_role' => $alloc['user_role'] ?? '',
+                    'carry_forward_value' => $alloc['carry_forward_value'] ?? null,
+                ];
+            }
+            foreach ($alloc['items'] ?? [] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $itemId = (int) ($item['id'] ?? $item['item_id'] ?? 0);
+                if ($itemId > 0) {
+                    $itemLookup[$itemId] = $item;
+                }
+            }
+        }
+
+        $buckets = [];
+        foreach ($userMeta as $userId => $meta) {
+            $buckets[$userId] = [
+                'user_id' => $meta['user_id'],
+                'user_email' => $meta['user_email'],
+                'user_name' => $meta['user_name'],
+                'user_role' => $meta['user_role'],
+                'carry_forward_value' => $meta['carry_forward_value'],
+                'items' => [],
+                'allocated_value' => (float) ($meta['carry_forward_value'] ?? 0),
+            ];
+        }
+
+        foreach ($assignments as $row) {
+            $itemId = (int) ($row['item_id'] ?? 0);
+            $userId = (int) ($row['assigned_to_user_id'] ?? 0);
+            if ($itemId <= 0 || $userId <= 0 || !isset($itemLookup[$itemId]) || !isset($buckets[$userId])) {
+                continue;
+            }
+            $item = $itemLookup[$itemId];
+            $item['allocation_reason'] = $row['allocation_reason'] ?? 'Attorney Adjusted';
+            $buckets[$userId]['items'][] = $item;
+            $price = $item['concluded_price'] ?? $item['purchase_price'] ?? 0;
+            $buckets[$userId]['allocated_value'] += (float) $price;
+        }
+
+        $target = (float) ($data['target_value_per_user'] ?? 0);
+        $remapped = [];
+        foreach ($userMeta as $userId => $meta) {
+            $bucket = $buckets[$userId];
+            $remapped[$meta['key']] = [
+                'user_id' => $bucket['user_id'],
+                'user_email' => $bucket['user_email'],
+                'user_name' => $bucket['user_name'],
+                'user_role' => $bucket['user_role'],
+                'allocated_item_count' => count($bucket['items']),
+                'allocated_value' => round($bucket['allocated_value'], 2),
+                'value_difference' => round($bucket['allocated_value'] - $target, 2),
+                'items' => $bucket['items'],
+                'carry_forward_value' => $bucket['carry_forward_value'],
+            ];
+        }
+
+        $data['allocations'] = $remapped;
+
+        return $data;
     }
 
     /**
@@ -529,6 +749,13 @@ class CaseController extends Controller
     {
         if (!$case->canLegalRepresentativeDistribute()) {
             abort(403, 'This case is not eligible for distribution.');
+        }
+    }
+
+    private function assertCanAdjustDistribution(CourtCase $case): void
+    {
+        if (!$case->canLegalRepresentativeAdjustDistribution()) {
+            abort(403, 'This case is not eligible for distribution adjustment.');
         }
     }
 
