@@ -61,6 +61,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/admin/cases/{id}/distribute/adjust-draft', [AdminCaseController::class, 'clearDistributeAdjustDraft'])->name('admin.cases.distribute.adjustDraft.clear');
     Route::get('/admin/cases/{id}/distribute/preview', [AdminCaseController::class, 'distributePreview'])->name('admin.cases.distribute.preview');
     Route::post('/admin/cases/{id}/distribute', [AdminCaseController::class, 'distribute'])->name('admin.cases.distribute');
+    Route::post('/admin/cases/{id}/close', [AdminCaseController::class, 'closeCase'])->name('admin.cases.close');
     Route::get('/admin/cases/{id}/assets', [AdminCaseController::class, 'listAssets'])->name('admin.cases.assets.list');
     Route::get('/admin/cases/{id}/assets/{itemId}', [AdminCaseController::class, 'showAsset'])->name('admin.cases.assets.show');
     Route::get('/admin/cases/{id}/assets/{itemId}/image', [AdminCaseController::class, 'assetImage'])->name('admin.cases.assets.image');

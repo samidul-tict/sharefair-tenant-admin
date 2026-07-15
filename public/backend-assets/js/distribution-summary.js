@@ -39,7 +39,9 @@
         var raw =
             item.concluded_price != null && item.concluded_price !== ''
                 ? item.concluded_price
-                : item.purchase_price;
+                : item.purchase_price != null && item.purchase_price !== ''
+                  ? item.purchase_price
+                  : item.estimated_value;
         return raw != null && raw !== '' ? formatMoney(raw) : null;
     }
 
@@ -111,12 +113,26 @@
         return html;
     }
 
+    function renderAllItems(items) {
+        items = items || [];
+        return items.length
+            ? items.map(renderItemRow).join('')
+            : '<p class="cs-dist-empty-inline">No items in this allocation.</p>';
+    }
+
     function renderAllocationCard(alloc, target, options, cardIndex) {
         options = options || {};
         var showProgress = options.showProgress !== false;
+        var showAllItems = options.showAllItems === true;
         var userName = alloc.user_name || alloc.user_email || 'User';
         var roleLabel = (alloc.user_role || '').toUpperCase();
-        var isDefendant = roleLabel === 'DEF' || roleLabel === 'DEFENDANT';
+        var isDefendant = roleLabel === 'DEF' || roleLabel === 'DEFENDANT' || roleLabel === 'SPOUSE';
+        var roleDisplayLabel =
+            roleLabel === 'PL' || roleLabel === 'PLAINTIFF' || roleLabel === 'CLIENT'
+                ? 'Client'
+                : isDefendant
+                  ? 'Spouse'
+                  : roleLabel;
         var received = Number(alloc.allocated_value || 0);
         var pct = target > 0 ? Math.min(100, (received / target) * 100) : 0;
         var pctRounded = Math.round(pct);
@@ -165,7 +181,9 @@
               '</div></div>';
 
         return (
-            '<article class="cs-dist-alloc-card">' +
+            '<article class="cs-dist-alloc-card' +
+            (options.boardColumn ? ' is-board-column' : '') +
+            '">' +
             '<div class="cs-dist-alloc-head">' +
             '<div class="cs-dist-alloc-avatar' +
             (isDefendant ? ' is-defendant' : '') +
@@ -180,17 +198,17 @@
                 ? '<p class="cs-dist-alloc-email">' + esc(alloc.user_email) + '</p>'
                 : '') +
             '</div>' +
-            (roleLabel
+            (roleDisplayLabel
                 ? '<span class="cs-dist-role-badge' +
                   (isDefendant ? ' is-defendant' : '') +
                   '">' +
-                  esc(roleLabel) +
+                  esc(roleDisplayLabel) +
                   '</span>'
                 : '') +
             '</div>' +
             progressHtml +
             '<div class="cs-dist-alloc-items">' +
-            renderCollapsibleItems(alloc.items, cardId) +
+            (showAllItems ? renderAllItems(alloc.items) : renderCollapsibleItems(alloc.items, cardId)) +
             '</div></article>'
         );
     }
@@ -274,6 +292,9 @@
         var adjustRoot = rootEl.querySelector('[data-dist-adjust]');
         var adjustBoard = rootEl.querySelector('[data-dist-adjust-board]');
         var adjustCapsEl = rootEl.querySelector('[data-dist-adjust-caps]');
+        var adjustSearchInput = rootEl.querySelector('[data-dist-adjust-search]');
+        var adjustSearchClear = rootEl.querySelector('[data-dist-adjust-search-clear]');
+        var adjustSearchStatus = rootEl.querySelector('[data-dist-adjust-search-status]');
         var statsEl = rootEl.querySelector('[data-dist-stats]');
         var confirmBtn = rootEl.querySelector('[data-dist-confirm]');
         var reviewCheckbox = rootEl.querySelector('[data-dist-reviewed]');
@@ -284,6 +305,7 @@
         var pendingAssignments = null;
         var adjustState = null;
         var dragItemId = null;
+        var adjustSearchTerm = '';
 
         initDistDownloadMenus(pageScope);
         initDistEmailModal(
@@ -303,7 +325,9 @@
             var raw =
                 item.concluded_price != null && item.concluded_price !== ''
                     ? item.concluded_price
-                    : item.purchase_price;
+                    : item.purchase_price != null && item.purchase_price !== ''
+                      ? item.purchase_price
+                      : item.estimated_value;
             return raw != null && raw !== '' ? Number(raw) : 0;
         }
 
@@ -384,6 +408,17 @@
             var target = Number(d.target_value_per_user || 0);
             var allocEntries = Object.entries(d.allocations || {});
             var nonMaritalEntries = Object.entries(d.non_marital_assets || {});
+            function roleOrder(entry) {
+                var role = String((entry[1] || {}).user_role || '').toUpperCase();
+                if (role === 'PL' || role === 'PLAINTIFF' || role === 'CLIENT') return 0;
+                if (role === 'DEF' || role === 'DEFENDANT' || role === 'SPOUSE') return 1;
+                return 2;
+            }
+            function sortByRole(left, right) {
+                return roleOrder(left) - roleOrder(right);
+            }
+            allocEntries.sort(sortByRole);
+            nonMaritalEntries.sort(sortByRole);
 
             var allocationsPanel = rootEl.querySelector('[data-dist-panel="allocations"]');
             if (allocationsPanel) {
@@ -394,10 +429,15 @@
                     allocationsPanel.innerHTML =
                         renderReasonKey() +
                         '<h3 class="cs-dist-panel-title"><i class="fas fa-tags" aria-hidden="true"></i> Allocations</h3>' +
-                        '<div class="cs-dist-alloc-list">' +
+                        '<div class="cs-dist-alloc-list cs-dist-allocation-board">' +
                         allocEntries
                             .map(function (entry, i) {
-                                return renderAllocationCard(entry[1], target, { showProgress: true }, i);
+                                return renderAllocationCard(
+                                    entry[1],
+                                    target,
+                                    { showProgress: true, showAllItems: true, boardColumn: true },
+                                    i
+                                );
                             })
                             .join('') +
                         '</div>';
@@ -423,10 +463,15 @@
                         key +
                         '<h3 class="cs-dist-panel-title"><i class="fas fa-box" aria-hidden="true"></i> Non-marital assets</h3>' +
                         '<p class="cs-dist-panel-desc">Assets allocated to a party as non-marital (e.g. separate property).</p>' +
-                        '<div class="cs-dist-alloc-list">' +
+                        '<div class="cs-dist-alloc-list cs-dist-allocation-board cs-dist-nonmarital-board">' +
                         nonMaritalEntries
                             .map(function (entry, i) {
-                                return renderAllocationCard(entry[1], 0, { showProgress: false }, 'nm-' + i);
+                                return renderAllocationCard(
+                                    entry[1],
+                                    0,
+                                    { showProgress: false, showAllItems: true, boardColumn: true },
+                                    'nm-' + i
+                                );
                             })
                             .join('') +
                         '</div>';
@@ -744,8 +789,41 @@
                 .join('');
         }
 
+        function normalizeAdjustSearch(value) {
+            return String(value || '')
+                .trim()
+                .toLocaleLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '');
+        }
+
+        function adjustItemMatchesSearch(item) {
+            if (!adjustSearchTerm) return true;
+            return normalizeAdjustSearch(item && item.name).indexOf(adjustSearchTerm) !== -1;
+        }
+
+        function updateAdjustSearchStatus() {
+            if (!adjustSearchStatus || !adjustState) return;
+            if (!adjustSearchTerm) {
+                adjustSearchStatus.hidden = true;
+                adjustSearchStatus.textContent = '';
+                return;
+            }
+
+            var matchCount = adjustState.buckets.reduce(function (count, bucket) {
+                return count + bucket.items.filter(adjustItemMatchesSearch).length;
+            }, 0);
+            adjustSearchStatus.hidden = false;
+            adjustSearchStatus.textContent =
+                matchCount +
+                ' matching asset' +
+                (matchCount === 1 ? '' : 's') +
+                ' found across all tables.';
+        }
+
         function renderAdjustColumn(bucket, target) {
             var isPool = !!bucket.isPool;
+            var visibleItems = bucket.items.filter(adjustItemMatchesSearch);
             var received = bucket.items.reduce(function (sum, item) {
                 return sum + itemPriceNum(item);
             }, Number(bucket.carry_forward_value || 0));
@@ -755,38 +833,48 @@
             var moveOptions = moveOptionsHtml(bucket.key);
 
             var rows =
-                bucket.items.length === 0
-                    ? '<tr class="cs-dist-adjust-empty-row"><td colspan="5">' +
-                      (isPool
-                          ? 'No unassigned marital assets. Drop assets here to unassign.'
-                          : 'No assets in this bucket. Drop one here.') +
-                      '</td></tr>'
-                    : bucket.items
+                visibleItems.length === 0
+                    ? '<p class="cs-dist-adjust-empty-tile">' +
+                      (adjustSearchTerm
+                          ? 'No assets matching this name in this table.'
+                          : isPool
+                            ? 'No unassigned marital assets. Drop assets here to unassign.'
+                            : 'No assets in this bucket. Drop one here.') +
+                      '</p>'
+                    : visibleItems
                           .map(function (item) {
                               var itemId = Number(item.id || item.item_id || 0);
+                              var price = itemPriceNum(item);
+                              var reason = item.allocation_reason
+                                  ? '<span class="cs-dist-reason-badge ' +
+                                    allocationReasonClass(item.allocation_reason) +
+                                    '">' +
+                                    esc(item.allocation_reason) +
+                                    '</span>'
+                                  : '';
+                              var brand = itemBrand(item)
+                                  ? '<span class="cs-dist-item-brand">' + esc(itemBrand(item)) + '</span>'
+                                  : '';
                               return (
-                                  '<tr class="cs-dist-adjust-row" draggable="true" data-item-id="' +
+                                  '<article class="cs-dist-adjust-row cs-dist-adjust-tile" draggable="true" data-item-id="' +
                                   itemId +
                                   '">' +
-                                  '<td class="cs-dist-adjust-name">' +
+                                  '<div class="cs-dist-adjust-tile-main">' +
                                   '<span class="cs-dist-adjust-grip" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>' +
+                                  '<span class="cs-dist-adjust-tile-icon" aria-hidden="true"><i class="fas fa-box"></i></span>' +
+                                  '<div class="cs-dist-adjust-tile-content">' +
+                                  '<strong class="cs-dist-adjust-tile-name">' +
                                   esc(item.name || 'Unnamed asset') +
-                                  '</td>' +
-                                  '<td>' +
-                                  esc(itemBrand(item) || '—') +
-                                  '</td>' +
-                                  '<td>' +
-                                  formatMoney(itemPriceNum(item) || null) +
-                                  '</td>' +
-                                  '<td>' +
-                                  esc(item.allocation_reason || '—') +
-                                  '</td>' +
-                                  '<td>' +
-                                  '<label class="sr-only" for="move-' +
+                                  '</strong>' +
+                                  '<div class="cs-dist-adjust-tile-meta">' +
+                                  (price ? '<span class="cs-dist-item-price">' + formatMoney(price) + '</span>' : '') +
+                                  reason +
+                                  brand +
+                                  '</div></div></div>' +
+                                  '<div class="cs-dist-adjust-tile-move">' +
+                                  '<label for="move-' +
                                   itemId +
-                                  '">Move ' +
-                                  esc(item.name || 'asset') +
-                                  '</label>' +
+                                  '">Move asset</label>' +
                                   '<select id="move-' +
                                   itemId +
                                   '" class="cs-dist-adjust-move" data-item-id="' +
@@ -795,8 +883,8 @@
                                   '<option value="">Move to…</option>' +
                                   moveOptions +
                                   '</select>' +
-                                  '</td>' +
-                                  '</tr>'
+                                  '</div>' +
+                                  '</article>'
                               );
                           })
                           .join('');
@@ -848,12 +936,9 @@
                 '</div>' +
                 totalsHtml +
                 '</header>' +
-                '<div class="cs-dist-adjust-table-wrap">' +
-                '<table class="cs-dist-adjust-table">' +
-                '<thead><tr><th>Asset</th><th>Brand</th><th>Price</th><th>Reason</th><th>Move</th></tr></thead>' +
-                '<tbody>' +
+                '<div class="cs-dist-adjust-tiles">' +
                 rows +
-                '</tbody></table></div></section>'
+                '</div></section>'
             );
         }
 
@@ -868,6 +953,7 @@
                 })
                 .join('');
 
+            updateAdjustSearchStatus();
             bindAdjustInteractions();
         }
 
@@ -947,6 +1033,13 @@
                 showError('No participants available to adjust.');
                 return;
             }
+            adjustSearchTerm = '';
+            if (adjustSearchInput) adjustSearchInput.value = '';
+            if (adjustSearchClear) adjustSearchClear.hidden = true;
+            if (adjustSearchStatus) {
+                adjustSearchStatus.hidden = true;
+                adjustSearchStatus.textContent = '';
+            }
             refreshAdjustTarget();
             if (summaryRoot) summaryRoot.hidden = true;
             if (actionsAside) actionsAside.hidden = true;
@@ -960,6 +1053,7 @@
             if (actionsAside) actionsAside.hidden = false;
             if (restoreSummary && summaryRoot) summaryRoot.hidden = false;
             adjustState = null;
+            adjustSearchTerm = '';
         }
 
         function applyAdjustments() {
@@ -1105,6 +1199,33 @@
 
         if (adjustOpenBtn && canAdjust) {
             adjustOpenBtn.addEventListener('click', openAdjustMode);
+        }
+
+        if (adjustSearchInput) {
+            adjustSearchInput.addEventListener('input', function () {
+                adjustSearchTerm = normalizeAdjustSearch(adjustSearchInput.value);
+                if (adjustSearchClear) adjustSearchClear.hidden = !adjustSearchTerm;
+                renderAdjustBoard();
+            });
+            adjustSearchInput.addEventListener('keydown', function (e) {
+                if (e.key !== 'Escape' || !adjustSearchInput.value) return;
+                e.preventDefault();
+                adjustSearchInput.value = '';
+                adjustSearchTerm = '';
+                if (adjustSearchClear) adjustSearchClear.hidden = true;
+                renderAdjustBoard();
+            });
+        }
+        if (adjustSearchClear) {
+            adjustSearchClear.addEventListener('click', function () {
+                if (adjustSearchInput) {
+                    adjustSearchInput.value = '';
+                    adjustSearchInput.focus();
+                }
+                adjustSearchTerm = '';
+                adjustSearchClear.hidden = true;
+                renderAdjustBoard();
+            });
         }
 
         var adjustCancelBtn = rootEl.querySelector('[data-dist-adjust-cancel]');

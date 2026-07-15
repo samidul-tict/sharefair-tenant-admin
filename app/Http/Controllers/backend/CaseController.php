@@ -158,6 +158,7 @@ class CaseController extends Controller
 
         $canDistribute = $case->canLegalRepresentativeDistribute();
         $showDistributionSummary = $case->hasDistributionSummary();
+        $canCloseCase = $this->canCurrentAttorneyCloseCase($case);
 
         return view('backend.cases.show', compact(
             'case',
@@ -168,7 +169,8 @@ class CaseController extends Controller
             'commentCount',
             'participatingUserCount',
             'canDistribute',
-            'showDistributionSummary'
+            'showDistributionSummary',
+            'canCloseCase'
         ));
     }
 
@@ -186,13 +188,26 @@ class CaseController extends Controller
             'status' => 'nullable|string|max:64',
             'category' => 'nullable|string|max:64',
             'location_id' => 'nullable|integer',
+            'sort_by' => [
+                'nullable',
+                Rule::in([
+                    'name', 'location', 'category', 'other_category', 'condition', 'brand',
+                    'other_brand', 'purchase_year', 'purchase_price', 'estimated_value',
+                    'concluded_price', 'accessories_status', 'original_packaging',
+                    'valid_warranty', 'marital_asset', 'assigned_to', 'assigned_reason', 'status',
+                ]),
+            ],
+            'sort_order' => 'nullable|in:asc,desc',
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 25);
         $search = trim((string) ($validated['search'] ?? ''));
+        $sortBy = (string) ($validated['sort_by'] ?? 'name');
+        $sortOrder = (string) ($validated['sort_order'] ?? 'asc');
+        $dataElementCategoryIds = [7, 8, 10, 12, 14];
 
         $labels = DB::table('data_element')
-            ->whereIn('category_id', [7, 8, 10, 12, 14])
+            ->whereIn('category_id', $dataElementCategoryIds)
             ->where('is_active', true)
             ->pluck('name', 'value');
 
@@ -202,13 +217,77 @@ class CaseController extends Controller
 
         if ($search !== '') {
             $like = '%' . $search . '%';
-            $query->where(function ($inner) use ($like) {
+            $matchingLabelValues = DB::table('data_element')
+                ->whereIn('category_id', $dataElementCategoryIds)
+                ->where('is_active', true)
+                ->where('name', 'ILIKE', $like)
+                ->pluck('value')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            $normalizedNumber = str_replace(['$', ','], '', $search);
+            $isNumericSearch = is_numeric($normalizedNumber);
+            $numericSearch = $isNumericSearch ? (float) $normalizedNumber : null;
+            $integerSearch = $isNumericSearch && floor($numericSearch) === $numericSearch
+                ? (int) $numericSearch
+                : null;
+            $lowerSearch = mb_strtolower($search);
+            $booleanSearch = match (true) {
+                in_array($lowerSearch, ['yes', 'true'], true) => true,
+                in_array($lowerSearch, ['no', 'false'], true) => false,
+                default => null,
+            };
+
+            $query->where(function ($inner) use (
+                $like,
+                $matchingLabelValues,
+                $isNumericSearch,
+                $numericSearch,
+                $integerSearch,
+                $booleanSearch,
+                $lowerSearch
+            ) {
                 $inner->where('name', 'ILIKE', $like)
                     ->orWhere('other_category', 'ILIKE', $like)
                     ->orWhere('other_brand', 'ILIKE', $like)
                     ->orWhere('assigned_reason', 'ILIKE', $like)
+                    ->orWhere('category', 'ILIKE', $like)
+                    ->orWhere('condition', 'ILIKE', $like)
+                    ->orWhere('brand', 'ILIKE', $like)
+                    ->orWhere('accessories_status_value', 'ILIKE', $like)
+                    ->orWhere('status', 'ILIKE', $like)
                     ->orWhereHas('assignedToUser', fn ($userQuery) => $userQuery->where('name', 'ILIKE', $like))
                     ->orWhereHas('location', fn ($locationQuery) => $locationQuery->where('name', 'ILIKE', $like));
+
+                if ($matchingLabelValues !== []) {
+                    $inner->orWhereIn('category', $matchingLabelValues)
+                        ->orWhereIn('condition', $matchingLabelValues)
+                        ->orWhereIn('brand', $matchingLabelValues)
+                        ->orWhereIn('accessories_status_value', $matchingLabelValues)
+                        ->orWhereIn('status', $matchingLabelValues);
+                }
+
+                if ($isNumericSearch) {
+                    $inner->orWhere('purchase_price', $numericSearch)
+                        ->orWhere('estimated_value', $numericSearch)
+                        ->orWhere('concluded_price', $numericSearch);
+                    if ($integerSearch !== null) {
+                        $inner->orWhere('purchase_year', $integerSearch);
+                    }
+                }
+
+                if ($booleanSearch !== null) {
+                    $inner->orWhere('has_original_packaging', $booleanSearch)
+                        ->orWhere('has_valid_warranty', $booleanSearch)
+                        ->orWhere('is_marital_asset', $booleanSearch);
+                }
+
+                if ($lowerSearch === 'marital') {
+                    $inner->orWhere('is_marital_asset', true);
+                } elseif (in_array($lowerSearch, ['separate', 'non-marital', 'non marital'], true)) {
+                    $inner->orWhere('is_marital_asset', false);
+                }
             });
         }
 
@@ -224,7 +303,59 @@ class CaseController extends Controller
             $query->where('location_id', (int) $validated['location_id']);
         }
 
-        $assets = $query->orderBy('id')->paginate($perPage);
+        $directSortColumns = [
+            'name' => 'items.name',
+            'other_category' => 'items.other_category',
+            'other_brand' => 'items.other_brand',
+            'purchase_year' => 'items.purchase_year',
+            'purchase_price' => 'items.purchase_price',
+            'estimated_value' => 'items.estimated_value',
+            'concluded_price' => 'items.concluded_price',
+            'original_packaging' => 'items.has_original_packaging',
+            'valid_warranty' => 'items.has_valid_warranty',
+            'marital_asset' => 'items.is_marital_asset',
+            'assigned_reason' => 'items.assigned_reason',
+        ];
+        $labelSortColumns = [
+            'category' => 'category',
+            'condition' => 'condition',
+            'brand' => 'brand',
+            'accessories_status' => 'accessories_status_value',
+            'status' => 'status',
+        ];
+
+        if ($sortBy === 'location') {
+            $query->orderBy(
+                AssociatedLocation::query()
+                    ->select('name')
+                    ->whereColumn('associated_locations.id', 'items.location_id')
+                    ->limit(1),
+                $sortOrder
+            );
+        } elseif ($sortBy === 'assigned_to') {
+            $query->orderBy(
+                User::query()
+                    ->select('name')
+                    ->whereColumn('users.id', 'items.assigned_to_user_id')
+                    ->limit(1),
+                $sortOrder
+            );
+        } elseif (isset($labelSortColumns[$sortBy])) {
+            $sourceColumn = $labelSortColumns[$sortBy];
+            $query->orderBy(
+                DB::table('data_element')
+                    ->select('name')
+                    ->whereColumn('data_element.value', "items.{$sourceColumn}")
+                    ->whereIn('category_id', $dataElementCategoryIds)
+                    ->where('is_active', true)
+                    ->limit(1),
+                $sortOrder
+            );
+        } else {
+            $query->orderBy($directSortColumns[$sortBy] ?? 'items.name', $sortOrder);
+        }
+
+        $assets = $query->orderBy('items.id', 'asc')->paginate($perPage);
 
         $startIndex = ($assets->currentPage() - 1) * $assets->perPage();
 
@@ -242,6 +373,10 @@ class CaseController extends Controller
             ],
             'filters' => $this->caseAssetFilterOptions($id),
             'total_in_case' => Item::where('case_id', $id)->count(),
+            'sort' => [
+                'by' => $sortBy,
+                'order' => $sortOrder,
+            ],
         ]);
     }
 
@@ -720,6 +855,7 @@ class CaseController extends Controller
 
         $canConfirmDistribute = $case->canLegalRepresentativeDistribute();
         $canAdjustDistribute = $case->canLegalRepresentativeAdjustDistribution();
+        $canCloseCase = $this->canCurrentAttorneyCloseCase($case);
         $emailRecipients = $this->distributionSummaryEmailRecipients($id);
         $showDistributionCaps = in_array($case->distribution_method_value, ['DIST_FCP', 'DIST_CAP'], true);
         $distributionValueCaps = CaseUserMapping::query()
@@ -732,10 +868,32 @@ class CaseController extends Controller
             'case',
             'canConfirmDistribute',
             'canAdjustDistribute',
+            'canCloseCase',
             'emailRecipients',
             'showDistributionCaps',
             'distributionValueCaps'
         ));
+    }
+
+    /**
+     * Close a legal matter after its PEND_APP requirements are satisfied.
+     */
+    public function closeCase(int $id, ShareFairApiService $shareFairApi)
+    {
+        $case = $this->findAccessibleCase($id);
+        if (!$this->canCurrentAttorneyCloseCase($case)) {
+            abort(403, 'This case is not eligible to be closed.');
+        }
+
+        try {
+            $payload = $shareFairApi->closeCase($id);
+        } catch (ShareFairApiException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()
+            ->route('admin.cases.show', $id)
+            ->with('success', $payload['message'] ?? 'Case closed successfully.');
     }
 
     /**
@@ -1228,6 +1386,46 @@ class CaseController extends Controller
         if (!$case->canLegalRepresentativeAdjustDistribution()) {
             abort(403, 'This case is not eligible for distribution adjustment.');
         }
+    }
+
+    private function canCurrentAttorneyCloseCase(CourtCase $case): bool
+    {
+        if ($case->case_status_value !== 'PEND_APP') {
+            return false;
+        }
+
+        $isAttorney = CaseUserMapping::query()
+            ->where('case_id', $case->id)
+            ->where('user_id', Auth::id())
+            ->where('role_value', 'LEGAL_RE')
+            ->where('is_active', true)
+            ->exists();
+
+        if (!$isAttorney) {
+            return false;
+        }
+
+        if ($case->distribute_by_client !== true) {
+            return true;
+        }
+
+        $parties = CaseUserMapping::query()
+            ->where('case_id', $case->id)
+            ->whereIn('role_value', ['PL', 'DEF'])
+            ->where('is_active', true);
+
+        $hasUnreadyParty = (clone $parties)
+            ->where(function ($query) {
+                $query->where(function ($participationQuery) {
+                    $participationQuery->whereNull('participate_in_distribution')
+                        ->orWhere('participate_in_distribution', false);
+                })
+                    ->orWhereNull('user_status_value')
+                    ->orWhere('user_status_value', '<>', 'C_CLOSE');
+            })
+            ->exists();
+
+        return (clone $parties)->exists() && !$hasUnreadyParty;
     }
 
     public function create()

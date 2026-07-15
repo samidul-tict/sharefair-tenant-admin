@@ -375,6 +375,17 @@ class ShareFairApiService
         return $payload;
     }
 
+    public function closeCase(int $caseId): array
+    {
+        $payload = $this->request(
+            fn (PendingRequest $client) => $client->asJson()->post("/cases/{$caseId}/close")
+        );
+
+        $this->forgetDistributePreviewCache($caseId);
+
+        return $payload;
+    }
+
     /**
      * Persist attorney remapping of marital allocations while case is PEND_APP.
      *

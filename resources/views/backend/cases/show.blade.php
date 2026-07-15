@@ -75,6 +75,9 @@
         @if (session('success'))
             <div class="alert alert-success cs-flash-alert" role="alert">{{ session('success') }}</div>
         @endif
+        @if (session('error'))
+            <div class="alert alert-danger cs-flash-alert" role="alert">{{ session('error') }}</div>
+        @endif
         @if (request('distributed'))
             <div class="alert alert-success cs-flash-alert" role="alert">Assets distributed successfully.</div>
         @endif
@@ -90,10 +93,6 @@
             <div class="cs-case-title">
                 <div class="cs-case-number">{{ $case->case_number }}</div>
                 <div class="cs-case-type-badge">{{ $caseTypeName }}</div>
-                <div class="cs-status-badge {{ $case->is_active ? 'cs-status-active' : 'cs-status-inactive' }}">
-                    <span class="cs-status-dot" aria-hidden="true"></span>
-                    {{ $case->is_active ? 'Active' : 'Inactive' }}
-                </div>
                 <div class="cs-case-status-badge">
                     <span class="cs-status-dot" aria-hidden="true"></span>
                     {{ $caseStatusName }}
@@ -105,6 +104,11 @@
                     <i class="fas fa-balance-scale" aria-hidden="true"></i>
                     {{ ($canDistribute ?? false) ? 'Distribute assets' : 'Distribution summary' }}
                 </a>
+                @endif
+                @if($canCloseCase ?? false)
+                <button type="button" class="cs-btn-primary cs-btn-close-case" data-case-close-open>
+                    <i class="fas fa-check-circle" aria-hidden="true"></i> Close case
+                </button>
                 @endif
                 @if($canEditCase)
                 <a href="{{ route('admin.cases.edit', $case->id) }}" class="cs-btn-secondary cs-btn-edit">
@@ -318,7 +322,7 @@
                         <label class="cs-assets-search-wrap">
                             <span class="sr-only">Search assets</span>
                             <i class="fas fa-search cs-assets-search-icon" aria-hidden="true"></i>
-                            <input type="search" id="assetsSearch" class="cs-assets-search" placeholder="Search by name, brand, assignee…" autocomplete="off">
+                            <input type="search" id="assetsSearch" class="cs-assets-search" placeholder="Search across asset columns…" autocomplete="off">
                         </label>
                         <select id="assetsFilterStatus" class="cs-assets-select" aria-label="Filter by status">
                             <option value="">All statuses</option>
@@ -340,7 +344,8 @@
                     </div>
 
                     <div class="cs-assets-columns-panel" id="assetsColumnsPanel" hidden>
-                        <p class="cs-assets-columns-title">Show columns</p>
+                        <p class="cs-assets-columns-title">Show and reorder columns</p>
+                        <p class="cs-assets-columns-hint">Drag columns into your preferred order.</p>
                         <div class="cs-assets-columns-grid">
                             <label class="cs-assets-col-toggle"><input type="checkbox" data-col="index" checked disabled> #</label>
                             <label class="cs-assets-col-toggle"><input type="checkbox" data-col="name" checked disabled> Name</label>
@@ -535,6 +540,8 @@
     </div>
 </div>
 
+@include('backend.cases.partials.close-case-modal')
+
 @php
     $assetDetailUrlTemplate = route('admin.cases.assets.show', ['id' => $case->id, 'itemId' => 0]);
     $assetCommentsUrlTemplate = route('admin.cases.assets.comments', ['id' => $case->id, 'itemId' => 0]);
@@ -569,6 +576,7 @@
 @endphp
 @push('scripts')
 <script src="{{ asset('backend-assets/js/case-comments-board.js') }}"></script>
+<script src="{{ asset('backend-assets/js/case-close-modal.js') }}"></script>
 <script>
 var caseId = {{ $case->id }};
 var csrfToken = @json(csrf_token());
@@ -586,6 +594,8 @@ var assetCommentsStoreUrlTemplate = @json($assetCommentsStoreUrlTemplate);
 var assetTimelineUrlTemplate = @json($assetTimelineUrlTemplate);
 var assetCommentResponsesUrlTemplate = @json($assetCommentResponsesUrlTemplate);
 var assetCommentResponseStoreUrlTemplate = @json($assetCommentResponseStoreUrlTemplate);
+
+if (typeof initCaseCloseModal === 'function') initCaseCloseModal();
 
 function activateTab(tabId) {
     document.querySelectorAll('.cs-tab').forEach(function(tab) {
@@ -909,6 +919,7 @@ $(document).ready(function() {
         ];
 
         var STORAGE_KEY = 'case-' + caseId + '-assets-columns';
+        var ORDER_STORAGE_KEY = STORAGE_KEY + '-order';
         var DEFAULT_COLS = {
             index: true,
             name: true,
@@ -932,6 +943,8 @@ $(document).ready(function() {
         };
 
         var currentPage = 1;
+        var sortBy = 'name';
+        var sortOrder = 'asc';
         var searchTimer = null;
         var assetsLoading = false;
         var assetsLoadedOnce = false;
@@ -967,6 +980,61 @@ $(document).ready(function() {
             } catch (e) { /* ignore */ }
         }
 
+        function loadColumnOrder() {
+            try {
+                var stored = JSON.parse(localStorage.getItem(ORDER_STORAGE_KEY) || '[]');
+                if (Array.isArray(stored)) {
+                    var valid = stored.filter(function(col, index) {
+                        return ASSET_COLS.indexOf(col) !== -1 && stored.indexOf(col) === index;
+                    });
+                    ASSET_COLS.forEach(function(col) {
+                        if (valid.indexOf(col) === -1) valid.push(col);
+                    });
+                    return valid;
+                }
+            } catch (e) { /* ignore */ }
+            return ASSET_COLS.slice();
+        }
+
+        function saveColumnOrder(order) {
+            try {
+                localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(order));
+            } catch (e) { /* ignore */ }
+        }
+
+        function reorderChildren(container, selector, order) {
+            if (!container) return;
+            var nodes = {};
+            container.querySelectorAll(selector).forEach(function(node) {
+                var col = node.getAttribute('data-col');
+                if (col) nodes[col] = node;
+            });
+            order.forEach(function(col) {
+                if (nodes[col]) container.appendChild(nodes[col]);
+            });
+        }
+
+        function applyColumnOrder(order) {
+            var headerRow = table.querySelector('thead tr');
+            reorderChildren(headerRow, 'th[data-col]', order);
+
+            table.querySelectorAll('tbody tr[data-asset-id]').forEach(function(row) {
+                reorderChildren(row, 'td[data-col]', order);
+            });
+
+            if (columnsPanel) {
+                var grid = columnsPanel.querySelector('.cs-assets-columns-grid');
+                var labels = {};
+                grid.querySelectorAll('.cs-assets-col-toggle').forEach(function(label) {
+                    var input = label.querySelector('input[data-col]');
+                    if (input) labels[input.getAttribute('data-col')] = label;
+                });
+                order.forEach(function(col) {
+                    if (labels[col]) grid.appendChild(labels[col]);
+                });
+            }
+        }
+
         function applyColumns(prefs) {
             table.querySelectorAll('[data-col]').forEach(function(cell) {
                 var col = cell.getAttribute('data-col');
@@ -977,6 +1045,44 @@ $(document).ready(function() {
                 var col = cb.getAttribute('data-col');
                 if (cb.disabled) return;
                 cb.checked = prefs[col] !== false;
+            });
+        }
+
+        function initializeSortableHeaders() {
+            table.querySelectorAll('thead th[data-col]').forEach(function(th) {
+                var col = th.getAttribute('data-col');
+                if (col === 'index' || th.querySelector('[data-asset-sort]')) return;
+                var label = th.textContent.trim();
+                th.classList.add('cs-assets-sortable');
+                th.innerHTML =
+                    '<button type="button" class="cs-assets-sort-btn" data-asset-sort="' +
+                    col +
+                    '" aria-label="Sort by ' +
+                    escapeHtml(label) +
+                    '">' +
+                    '<span>' +
+                    escapeHtml(label) +
+                    '</span><i class="fas fa-sort cs-assets-sort-icon" aria-hidden="true"></i></button>';
+            });
+            updateSortHeaders();
+        }
+
+        function updateSortHeaders() {
+            table.querySelectorAll('thead th[data-col]').forEach(function(th) {
+                var col = th.getAttribute('data-col');
+                var active = col === sortBy;
+                var button = th.querySelector('[data-asset-sort]');
+                var icon = button ? button.querySelector('.cs-assets-sort-icon') : null;
+
+                th.removeAttribute('aria-sort');
+                if (active) {
+                    th.setAttribute('aria-sort', sortOrder === 'asc' ? 'ascending' : 'descending');
+                }
+                if (button) button.classList.toggle('is-active', active);
+                if (icon) {
+                    icon.className = 'fas cs-assets-sort-icon ' +
+                        (active ? (sortOrder === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort');
+                }
             });
         }
 
@@ -1020,7 +1126,7 @@ $(document).ready(function() {
                 '" aria-label="View details for ' +
                 escapeHtml(row.name || 'asset') +
                 '">';
-            ASSET_COLS.forEach(function(col) {
+            columnOrder.forEach(function(col) {
                 var cls = col === 'name' ? ' class="cs-table-name"' : '';
                 html += '<td data-col="' + col + '"' + cls + '>' + escapeHtml(row[col]) + '</td>';
             });
@@ -1392,7 +1498,9 @@ $(document).ready(function() {
                     search: searchInput ? searchInput.value : '',
                     status: filterStatus ? filterStatus.value : '',
                     category: filterCategory ? filterCategory.value : '',
-                    location_id: filterLocation ? filterLocation.value : ''
+                    location_id: filterLocation ? filterLocation.value : '',
+                    sort_by: sortBy,
+                    sort_order: sortOrder
                 },
                 success: function(res) {
                     assetsLoadedOnce = true;
@@ -1416,7 +1524,9 @@ $(document).ready(function() {
                     if (emptyFiltered) emptyFiltered.hidden = true;
                     updateCountSubtitle(res.pagination);
                     renderPagination(res.pagination);
+                    applyColumnOrder(columnOrder);
                     applyColumns(columnPrefs);
+                    updateSortHeaders();
                 },
                 error: function() {
                     tbody.innerHTML = '<tr><td colspan="19" class="text-center text-danger py-4">Unable to load assets. Please try again.</td></tr>';
@@ -1435,6 +1545,19 @@ $(document).ready(function() {
         window.loadCaseAssets = loadCaseAssets;
 
         var columnPrefs = loadColumnPrefs();
+        var columnOrder = loadColumnOrder();
+        initializeSortableHeaders();
+        if (columnsPanel) {
+            columnsPanel.querySelectorAll('.cs-assets-col-toggle').forEach(function(label) {
+                label.draggable = true;
+                label.setAttribute('data-column-item', '');
+                label.insertAdjacentHTML(
+                    'afterbegin',
+                    '<span class="cs-assets-column-drag" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>'
+                );
+            });
+        }
+        applyColumnOrder(columnOrder);
         applyColumns(columnPrefs);
 
         function onFilterChange() {
@@ -1495,6 +1618,23 @@ $(document).ready(function() {
             });
         }
 
+        var tableHead = table.querySelector('thead');
+        if (tableHead) {
+            tableHead.addEventListener('click', function(e) {
+                var button = e.target.closest('[data-asset-sort]');
+                if (!button || assetsLoading) return;
+                var requestedSort = button.getAttribute('data-asset-sort');
+                if (requestedSort === sortBy) {
+                    sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortBy = requestedSort;
+                    sortOrder = 'asc';
+                }
+                updateSortHeaders();
+                loadCaseAssets(1);
+            });
+        }
+
         columnCheckboxes.forEach(function(cb) {
             cb.addEventListener('change', function() {
                 var col = cb.getAttribute('data-col');
@@ -1507,12 +1647,56 @@ $(document).ready(function() {
         if (columnsReset) {
             columnsReset.addEventListener('click', function() {
                 columnPrefs = Object.assign({}, DEFAULT_COLS);
+                columnOrder = ASSET_COLS.slice();
                 saveColumnPrefs(columnPrefs);
+                saveColumnOrder(columnOrder);
+                applyColumnOrder(columnOrder);
                 applyColumns(columnPrefs);
             });
         }
 
         if (columnsBtn && columnsPanel) {
+            var draggedColumnItem = null;
+            var columnsGrid = columnsPanel.querySelector('.cs-assets-columns-grid');
+
+            columnsGrid.addEventListener('dragstart', function(e) {
+                draggedColumnItem = e.target.closest('[data-column-item]');
+                if (!draggedColumnItem) return;
+                draggedColumnItem.classList.add('is-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData(
+                    'text/plain',
+                    draggedColumnItem.querySelector('input[data-col]').getAttribute('data-col')
+                );
+            });
+
+            columnsGrid.addEventListener('dragover', function(e) {
+                if (!draggedColumnItem) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                var target = e.target.closest('[data-column-item]');
+                if (!target || target === draggedColumnItem) return;
+                var rect = target.getBoundingClientRect();
+                var insertAfter = e.clientY > rect.top + (rect.height / 2);
+                columnsGrid.insertBefore(draggedColumnItem, insertAfter ? target.nextSibling : target);
+            });
+
+            columnsGrid.addEventListener('drop', function(e) {
+                if (draggedColumnItem) e.preventDefault();
+            });
+
+            columnsGrid.addEventListener('dragend', function() {
+                if (!draggedColumnItem) return;
+                draggedColumnItem.classList.remove('is-dragging');
+                draggedColumnItem = null;
+                columnOrder = Array.prototype.map.call(
+                    columnsGrid.querySelectorAll('input[data-col]'),
+                    function(input) { return input.getAttribute('data-col'); }
+                );
+                saveColumnOrder(columnOrder);
+                applyColumnOrder(columnOrder);
+            });
+
             columnsBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 var open = columnsPanel.hidden;

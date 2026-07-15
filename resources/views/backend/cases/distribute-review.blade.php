@@ -19,6 +19,10 @@
             <span class="cs-breadcrumb-current">Distribution summary</span>
         </nav>
 
+        @if (session('error'))
+            <div class="alert alert-danger cs-flash-alert" role="alert">{{ session('error') }}</div>
+        @endif
+
         <div class="cs-header cs-distribute-page-header">
             <div class="cs-case-title">
                 <div class="cs-case-number">{{ $case->case_number }}</div>
@@ -144,6 +148,24 @@
                     </div>
                 </div>
                 <div class="cs-dist-adjust-cap-banner" data-dist-adjust-caps hidden role="status"></div>
+                <div class="cs-dist-adjust-search-block">
+                    <label for="distributionAdjustSearch" class="cs-dist-adjust-search-label">Find an asset to move</label>
+                    <div class="cs-dist-adjust-search">
+                        <i class="fas fa-search cs-dist-adjust-search-icon" aria-hidden="true"></i>
+                        <input
+                            type="search"
+                            id="distributionAdjustSearch"
+                            class="cs-dist-adjust-search-input"
+                            placeholder="Enter an asset name…"
+                            autocomplete="off"
+                            data-dist-adjust-search
+                        >
+                        <button type="button" class="cs-dist-adjust-search-clear" data-dist-adjust-search-clear hidden aria-label="Clear asset search">
+                            <i class="fas fa-times" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                <p class="cs-dist-adjust-search-status" data-dist-adjust-search-status role="status" hidden></p>
                 <div class="cs-dist-adjust-board" data-dist-adjust-board></div>
             </div>
 
@@ -199,6 +221,11 @@
                     <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
                         <i class="fas fa-envelope" aria-hidden="true"></i> Email
                     </button>
+                    @if($canCloseCase ?? false)
+                    <button type="button" class="cs-btn-primary cs-btn-close-case" data-case-close-open>
+                        <i class="fas fa-check-circle" aria-hidden="true"></i> Close case
+                    </button>
+                    @endif
                     <a href="{{ route('admin.cases.show', $case->id) }}" class="cs-btn-secondary">
                         <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to case
                     </a>
@@ -224,6 +251,11 @@
                     <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
                         <i class="fas fa-envelope" aria-hidden="true"></i> Email
                     </button>
+                    @if($canCloseCase ?? false)
+                    <button type="button" class="cs-btn-primary cs-btn-close-case" data-case-close-open>
+                        <i class="fas fa-check-circle" aria-hidden="true"></i> Close case
+                    </button>
+                    @endif
                     <a href="{{ route('admin.cases.show', $case->id) }}" class="cs-btn-secondary">
                         <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to case
                     </a>
@@ -233,6 +265,8 @@
         </div>
     </div>
 </div>
+
+@include('backend.cases.partials.close-case-modal')
 
 <div class="cs-dist-email-modal" data-dist-email-modal hidden>
     <div class="cs-dist-email-backdrop" data-dist-email-close></div>
@@ -281,11 +315,13 @@
 
 @push('scripts')
 <script src="{{ asset('backend-assets/js/distribution-summary.js') }}"></script>
+<script src="{{ asset('backend-assets/js/case-close-modal.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     if (typeof initDistributionSummary === 'function') {
         initDistributionSummary(document.getElementById('distributionSummaryApp'));
     }
+    if (typeof initCaseCloseModal === 'function') initCaseCloseModal();
 });
 </script>
 @endpush
