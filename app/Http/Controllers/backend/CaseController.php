@@ -1298,22 +1298,42 @@ class CaseController extends Controller
     private function preloadContactUsers(array $contacts): array
     {
         $ids = collect($contacts)->pluck('user_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
-        $emails = collect($contacts)->pluck('email')->filter()->map(fn ($email) => strtolower(trim((string) $email)))->unique()->values();
+        $emails = collect($contacts)
+            ->pluck('email')
+            ->filter()
+            ->map(fn ($email) => strtolower(trim((string) $email)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $byEmail = collect();
+        if ($emails->isNotEmpty()) {
+            // Case-insensitive match: Postgres whereIn is case-sensitive by default.
+            $byEmail = User::query()
+                ->where(function ($query) use ($emails) {
+                    foreach ($emails as $email) {
+                        $query->orWhereRaw('LOWER(TRIM(email)) = ?', [$email]);
+                    }
+                })
+                ->get()
+                ->keyBy(fn (User $user) => strtolower(trim((string) $user->email)));
+        }
 
         return [
             'by_id' => $ids->isNotEmpty()
                 ? User::whereIn('id', $ids)->get()->keyBy('id')
                 : collect(),
-            'by_email' => $emails->isNotEmpty()
-                ? User::whereIn('email', $emails)->get()->keyBy(fn (User $user) => strtolower($user->email))
-                : collect(),
+            'by_email' => $byEmail,
         ];
     }
 
     private function resolveContactUser(array $row, array $preloaded): ?User
     {
         if (!empty($row['user_id'])) {
-            return $preloaded['by_id']->get((int) $row['user_id']);
+            $user = $preloaded['by_id']->get((int) $row['user_id']);
+            if ($user) {
+                return $user;
+            }
         }
 
         $email = strtolower(trim((string) ($row['email'] ?? '')));
@@ -1321,7 +1341,143 @@ class CaseController extends Controller
             return null;
         }
 
-        return $preloaded['by_email']->get($email);
+        $user = $preloaded['by_email']->get($email);
+        if ($user) {
+            return $user;
+        }
+
+        // Fallback in case preload missed a casing variant.
+        return User::query()
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+            ->first();
+    }
+
+    /**
+     * Find an existing user by id/email or create one. Skips creating when the email already exists (case-insensitive).
+     */
+    private function findOrCreateContactUser(array $row, array &$preloaded, ?User $loggedUser, string $roleKey): User
+    {
+        $user = $this->resolveContactUser($row, $preloaded);
+        if ($user) {
+            return $user;
+        }
+
+        $email = trim((string) ($row['email'] ?? ''));
+        if ($email === '') {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'email' => 'Either choose an existing user or enter email, name and phone.',
+            ]);
+        }
+
+        $emailKey = strtolower($email);
+        $user = User::query()
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$emailKey])
+            ->first();
+
+        if ($user) {
+            $preloaded['by_id']->put($user->id, $user);
+            $preloaded['by_email']->put($emailKey, $user);
+            return $user;
+        }
+
+        try {
+            $user = User::create([
+                'email' => $email,
+                'name' => $row['name'] ?? '',
+                'phone_number' => $row['phone'] ?? null,
+                'password' => md5('12345'),
+                'preferred_language' => 'en',
+                'is_active' => true,
+                'created_by' => Auth::id(),
+                'created_date' => now(),
+                'modified_by' => Auth::id(),
+                'last_modified_date' => now(),
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // Race or case-variant email already present — reuse existing user.
+            $user = User::query()
+                ->whereRaw('LOWER(TRIM(email)) = ?', [$emailKey])
+                ->first();
+            if (!$user) {
+                throw $e;
+            }
+            $preloaded['by_id']->put($user->id, $user);
+            $preloaded['by_email']->put($emailKey, $user);
+            return $user;
+        }
+
+        $roleValue = $row[$roleKey] ?? null;
+        $isEndClient = in_array($roleValue, ['PL', 'DEF'], true);
+        $this->ensureUserRoleMapping(
+            $user->id,
+            $isEndClient ? 'EC' : (string) $roleValue,
+            $isEndClient ? 1 : ($loggedUser->tenant_id ?? null)
+        );
+
+        $preloaded['by_id']->put($user->id, $user);
+        $preloaded['by_email']->put($emailKey, $user);
+
+        return $user;
+    }
+
+    /**
+     * Ensure a user_role_mapping row exists; skip if this user already has that role.
+     */
+    private function ensureUserRoleMapping(int $userId, string $roleValue, $tenantId): void
+    {
+        if ($roleValue === '') {
+            return;
+        }
+
+        $exists = UserRoleMapping::where('user_id', $userId)
+            ->where('role_value', $roleValue)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        try {
+            UserRoleMapping::create([
+                'user_id' => $userId,
+                'role_value' => $roleValue,
+                'tenant_id' => $tenantId,
+                'is_active' => true,
+                'created_by' => Auth::id(),
+                'created_date' => now(),
+                'modified_by' => Auth::id(),
+                'last_modified_date' => now(),
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // Already mapped — skip.
+        }
+    }
+
+    /**
+     * Create a case_user_mapping row only if this user is not already on the case.
+     */
+    private function createCaseUserMappingIfAbsent(int $caseId, int $userId, array $attributes, array &$mappedUserIds): bool
+    {
+        if (isset($mappedUserIds[$userId])) {
+            return false;
+        }
+
+        if (CaseUserMapping::where('case_id', $caseId)->where('user_id', $userId)->exists()) {
+            $mappedUserIds[$userId] = true;
+            return false;
+        }
+
+        try {
+            CaseUserMapping::create(array_merge([
+                'case_id' => $caseId,
+                'user_id' => $userId,
+            ], $attributes));
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            $mappedUserIds[$userId] = true;
+            return false;
+        }
+
+        $mappedUserIds[$userId] = true;
+        return true;
     }
 
     /**
@@ -1602,6 +1758,7 @@ class CaseController extends Controller
                     || (isset($c['email']) && strcasecmp(trim($c['email'] ?? ''), Auth::user()->email ?? '') === 0);
                 return $isCreator && ($c['role_id'] ?? '') === 'LEGAL_RE';
             });
+            $mappedUserIds = [];
             if (!$creatorAlreadyLegalRe) {
                 CaseUserMapping::create([
                     'case_id'   => $case->id,
@@ -1618,76 +1775,32 @@ class CaseController extends Controller
                     'modified_by'      => Auth::id(),
                     'last_modified_date' => now(),
                 ]);
+                $mappedUserIds[(int) Auth::id()] = true;
             }
 
             $preloadedUsers = $this->preloadContactUsers($request->contacts);
 
             foreach ($request->contacts as $row) {
-                $user = $this->resolveContactUser($row, $preloadedUsers);
-
-                if ($user) {
-                    $participateInDistribution = in_array($row['role_id'], ['PL', 'DEF']);
-                    CaseUserMapping::create([
-                        'user_id'   => $user->id,
-                        'case_id'   => $case->id,
-                        'role_value'   => $row['role_id'],
-                        'user_status_value' => 'READY',
-                        'participate_in_distribution' => $participateInDistribution,
-                        'allocated_item_count' => 0,
-                        'allocated_value' => 0,
-                        'value_difference' => 0,
-                        'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role_id'),
-                        'is_active'        => true,
-                        'created_by'       => Auth::id(),
-                        'created_date'     => now(),
-                        'modified_by'      => Auth::id(),
-                        'last_modified_date' => now(),
-                    ]);
-                } else {
-                    $newUser = User::create([
-                        'email'  => $row['email'],
-                        'name'   => $row['name'],
-                        'phone_number' => $row['phone'],
-                        'password'  => md5('12345'),
-                        'preferred_language' => 'en',
-                        'is_active'        => true,
-                        'created_by'       => Auth::id(),
-                        'created_date'     => now(),
-                        'modified_by'      => Auth::id(),
-                        'last_modified_date' => now(),
-                    ]);
-
-                    // Plaintiff or Defendant new contacts: mark as EC [end client] in user_role_mapping and tie to tenant 1
-                    $isEndClient = in_array($row['role_id'] ?? '', ['PL', 'DEF']);
-                    UserRoleMapping::create([
-                        'user_id' => $newUser->id,
-                        'role_value' => $isEndClient ? 'EC' : $row['role_id'],
-                        'tenant_id' => $isEndClient ? 1 : $loggedUser->tenant_id,
-                        'is_active'        => true,
-                        'created_by'       => Auth::id(),
-                        'created_date'     => now(),
-                        'modified_by'      => Auth::id(),
-                        'last_modified_date' => now(),
-                    ]);
-
-                    $participateInDistribution = in_array($row['role_id'], ['PL', 'DEF']);
-                    CaseUserMapping::create([
-                        'user_id'   => $newUser->id,
-                        'case_id'   => $case->id,
-                        'role_value'   => $row['role_id'],
-                        'user_status_value' => 'READY',
-                        'participate_in_distribution' => $participateInDistribution,
-                        'allocated_item_count' => 0,
-                        'allocated_value' => 0,
-                        'value_difference' => 0,
-                        'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role_id'),
-                        'is_active'        => true,
-                        'created_by'       => Auth::id(),
-                        'created_date'     => now(),
-                        'modified_by'      => Auth::id(),
-                        'last_modified_date' => now(),
-                    ]);
+                try {
+                    $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role_id');
+                } catch (\Illuminate\Validation\ValidationException $e) {
+                    continue;
                 }
+
+                $this->createCaseUserMappingIfAbsent((int) $case->id, (int) $user->id, [
+                    'role_value' => $row['role_id'],
+                    'user_status_value' => 'READY',
+                    'participate_in_distribution' => in_array($row['role_id'], ['PL', 'DEF'], true),
+                    'allocated_item_count' => 0,
+                    'allocated_value' => 0,
+                    'value_difference' => 0,
+                    'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role_id'),
+                    'is_active' => true,
+                    'created_by' => Auth::id(),
+                    'created_date' => now(),
+                    'modified_by' => Auth::id(),
+                    'last_modified_date' => now(),
+                ], $mappedUserIds);
             }
 
             DB::commit();
@@ -1764,6 +1877,16 @@ class CaseController extends Controller
             if (!is_array($request->users)) {
                 return;
             }
+            foreach ($request->users as $i => $user) {
+                $hasUserId = !empty($user['user_id']);
+                if (!$hasUserId && (empty($user['email']) || empty($user['name']) || empty($user['phone']))) {
+                    $validator->errors()->add(
+                        "users.$i.email",
+                        'Either choose an existing user or enter email, name and phone.'
+                    );
+                }
+            }
+
             $plaintiffCount = collect($request->users)->where('role', 'PL')->count();
             $defendantCount = collect($request->users)->where('role', 'DEF')->count();
             if ($plaintiffCount > 1) {
@@ -1792,6 +1915,8 @@ class CaseController extends Controller
         });
 
         $validator->validate();
+
+        $loggedUser = $this->currentLogUser();
 
         try {
             DB::beginTransaction();
@@ -1838,45 +1963,39 @@ class CaseController extends Controller
                 ])->all()
             );
 
+            $mappedUserIds = CaseUserMapping::where('case_id', $case->id)
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->flip()
+                ->all();
+
             /** Save / Update Users & Mappings */
-            foreach ($request->users as $row) {
+            foreach ($request->users as $rowIndex => $row) {
                 $mappingId = $row['mapping_id'] ?? null;
 
-                if (!empty($row['user_id'])) {
-                    $user = $preloadedUsers['by_id']->get((int) $row['user_id']);
-                } else {
-                    /** Create OR Update user */
-                    $user = User::firstOrCreate(
-                        ['email' => $row['email']],
-                        [
-                            'name' => $row['name'],
-                            'phone_number' => $row['phone'],
-                            'password' => md5('12345'),
-                            'preferred_language' => 'en',
-                            'is_active' => true,
-                            'created_by' => Auth::id(),
-                            'created_date' => now(),
-                        ]
-                    );
-
-                    if ($user->wasRecentlyCreated == false) {
-                        $user->update([
-                            'name' => $row['name'],
-                            'phone_number' => $row['phone'],
-                            'modified_by' => Auth::id(),
-                            'last_modified_date' => now(),
-                        ]);
-                    }
+                try {
+                    $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role');
+                } catch (\Illuminate\Validation\ValidationException $e) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "users.$rowIndex.email" => 'Either choose an existing user or enter email, name and phone.',
+                    ]);
                 }
 
-                if (!$user) {
-                    continue;
-                }
-
-                $participateInDistribution = in_array($row['role'], ['PL', 'DEF']);
+                $userId = (int) $user->id;
+                $participateInDistribution = in_array($row['role'], ['PL', 'DEF'], true);
 
                 /** Update existing mapping */
                 if ($mappingId) {
+                    // If this user is already tied to a different mapping on the case, skip the user_id change.
+                    $conflict = CaseUserMapping::where('case_id', $case->id)
+                        ->where('user_id', $userId)
+                        ->where('id', '!=', $mappingId)
+                        ->exists();
+                    if ($conflict) {
+                        $mappedUserIds[$userId] = true;
+                        continue;
+                    }
+
                     CaseUserMapping::where('id', $mappingId)->update([
                         'user_id' => $user->id,
                         'role_value' => $row['role'],
@@ -1885,34 +2004,43 @@ class CaseController extends Controller
                         'modified_by' => Auth::id(),
                         'last_modified_date' => now(),
                     ]);
-                } else {
-                    /** Create new mapping */
-                    CaseUserMapping::create([
-                        'case_id' => $case->id,
-                        'user_id' => $user->id,
-                        'role_value' => $row['role'],
-                        'user_status_value' => 'READY',
-                        'participate_in_distribution' => $participateInDistribution,
-                        'allocated_item_count' => 0,
-                        'allocated_value' => 0,
-                        'value_difference' => 0,
-                        'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role'),
-                        'is_active' => true,
-                        'created_by' => Auth::id(),
-                        'created_date' => now(),
-                        'modified_by' => Auth::id(),
-                        'last_modified_date' => now(),
-                    ]);
+                    $mappedUserIds[$userId] = true;
+                    continue;
                 }
+
+                $this->createCaseUserMappingIfAbsent((int) $case->id, $userId, [
+                    'role_value' => $row['role'],
+                    'user_status_value' => 'READY',
+                    'participate_in_distribution' => $participateInDistribution,
+                    'allocated_item_count' => 0,
+                    'allocated_value' => 0,
+                    'value_difference' => 0,
+                    'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role'),
+                    'is_active' => true,
+                    'created_by' => Auth::id(),
+                    'created_date' => now(),
+                    'modified_by' => Auth::id(),
+                    'last_modified_date' => now(),
+                ], $mappedUserIds);
             }
 
             DB::commit();
             return redirect()->route('admin.cases.index')->with('success', 'Case updated successfully');
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            throw $e;
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            DB::rollBack();
+            return back()
+                ->withErrors([
+                    'users' => 'Each person can only be added once per case. Someone you added is already on this case.',
+                ])
+                ->withInput();
         } catch (\Exception $e) {
             DB::rollBack();
             return back()
-                ->with('error', 'Error: ' . $e->getMessage())
+                ->withErrors(['users' => 'Unable to update case: ' . $e->getMessage()])
                 ->withInput();
         }
     }

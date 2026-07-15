@@ -14,6 +14,10 @@
             </nav>
         </header>
 
+        @if(session('error'))
+            <div class="cc-alert cc-alert-danger" role="alert">{{ session('error') }}</div>
+        @endif
+
         @if($errors->any())
             <div class="cc-alert cc-alert-danger" role="alert">
                 <ul class="mb-0 pl-3">
@@ -29,7 +33,7 @@
                 Fields marked with an asterisk are required
             </div>
 
-            <form action="{{ route('admin.cases.update', $case->id) }}" method="POST" class="cc-form-grid" aria-label="Update case">
+            <form action="{{ route('admin.cases.update', $case->id) }}" method="POST" class="cc-form-grid" novalidate aria-label="Update case">
                 @csrf
                 @method('PUT')
 
@@ -39,23 +43,32 @@
                             Case Number
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="text" id="case_number" name="case_number" value="{{ old('case_number', $case->case_number) }}" required readonly aria-readonly="true">
+                        <input type="text" id="case_number" name="case_number" value="{{ old('case_number', $case->case_number) }}" required readonly aria-readonly="true" class="@error('case_number') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_number') ? 'true' : 'false' }}" @error('case_number') aria-describedby="case_number-error" @enderror>
+                        @error('case_number')
+                            <div id="case_number-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                     <div class="cc-form-group">
                         <label for="case_type">
                             Case Type
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <select id="case_type" name="case_type" required aria-required="true">
+                        <select id="case_type" name="case_type" required aria-required="true" class="@error('case_type') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_type') ? 'true' : 'false' }}" @error('case_type') aria-describedby="case_type-error" @enderror>
                             <option value="">Select Case Type</option>
                             @foreach ($caseType as $item)
                                 <option value="{{ $item->value }}" {{ old('case_type', $case->case_type_value) == $item->value ? 'selected' : '' }}>{{ $item->name }}</option>
                             @endforeach
                         </select>
+                        @error('case_type')
+                            <div id="case_type-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                     <div class="cc-form-group">
                         <label for="court_name">Court Name</label>
-                        <input type="text" id="court_name" name="court_name" value="{{ old('court_name', $case->court_name) }}" placeholder="Enter court name" aria-label="Court name">
+                        <input type="text" id="court_name" name="court_name" value="{{ old('court_name', $case->court_name) }}" placeholder="Enter court name" aria-label="Court name" class="@error('court_name') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('court_name') ? 'true' : 'false' }}" @error('court_name') aria-describedby="court_name-error" @enderror>
+                        @error('court_name')
+                            <div id="court_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                 </div>
 
@@ -65,54 +78,72 @@
                             SLA Deadline
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="date" id="sla_deadline" name="sla_deadline" value="{{ old('sla_deadline', $case->sla_deadline ? $case->sla_deadline->format('Y-m-d') : '') }}" required aria-required="true" aria-label="SLA deadline date">
+                        <input type="date" id="sla_deadline" name="sla_deadline" value="{{ old('sla_deadline', $case->sla_deadline ? $case->sla_deadline->format('Y-m-d') : '') }}" required aria-required="true" aria-label="SLA deadline date" class="@error('sla_deadline') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('sla_deadline') ? 'true' : 'false' }}" @error('sla_deadline') aria-describedby="sla_deadline-error" @enderror>
+                        @error('sla_deadline')
+                            <div id="sla_deadline-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                     <div class="cc-form-group">
                         <label for="asset_sla_in_days">
                             Asset SLA (in days)
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="asset_sla_in_days" name="asset_sla_in_days" value="{{ old('asset_sla_in_days', $case->asset_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" required aria-required="true" aria-label="Asset SLA in days">
+                        <input type="number" id="asset_sla_in_days" name="asset_sla_in_days" value="{{ old('asset_sla_in_days', $case->asset_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" required aria-required="true" aria-label="Asset SLA in days" class="@error('asset_sla_in_days') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('asset_sla_in_days') ? 'true' : 'false' }}" @error('asset_sla_in_days') aria-describedby="asset_sla_in_days-error" @enderror>
+                        @error('asset_sla_in_days')
+                            <div id="asset_sla_in_days-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                     <div class="cc-form-group">
                         <label for="max_number_of_arbitation_per_user">
                             Max number of arbitration allowed per user
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="max_number_of_arbitation_per_user" name="max_number_of_arbitation_per_user" value="{{ old('max_number_of_arbitation_per_user', $case->max_number_of_arbitation_per_user) }}" placeholder="Enter max arbitration allowed" min="0" step="1" required aria-required="true" aria-label="Max number of arbitration allowed per user">
+                        <input type="number" id="max_number_of_arbitation_per_user" name="max_number_of_arbitation_per_user" value="{{ old('max_number_of_arbitation_per_user', $case->max_number_of_arbitation_per_user) }}" placeholder="Enter max arbitration allowed" min="0" step="1" required aria-required="true" aria-label="Max number of arbitration allowed per user" class="@error('max_number_of_arbitation_per_user') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('max_number_of_arbitation_per_user') ? 'true' : 'false' }}" @error('max_number_of_arbitation_per_user') aria-describedby="max_number_of_arbitation_per_user-error" @enderror>
+                        @error('max_number_of_arbitation_per_user')
+                            <div id="max_number_of_arbitation_per_user-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                 </div>
 
                 <div class="cc-form-row">
                     <div class="cc-form-group">
                         <label for="distribution_sla_in_days">Distribution SLA (in days)</label>
-                        <input type="number" id="distribution_sla_in_days" name="distribution_sla_in_days" value="{{ old('distribution_sla_in_days', $case->distribution_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" inputmode="numeric" aria-describedby="distribution_sla_in_days-desc" aria-label="Distribution SLA in days">
+                        <input type="number" id="distribution_sla_in_days" name="distribution_sla_in_days" value="{{ old('distribution_sla_in_days', $case->distribution_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" inputmode="numeric" aria-describedby="distribution_sla_in_days-desc{{ $errors->has('distribution_sla_in_days') ? ' distribution_sla_in_days-error' : '' }}" aria-label="Distribution SLA in days" class="@error('distribution_sla_in_days') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('distribution_sla_in_days') ? 'true' : 'false' }}">
                         <span id="distribution_sla_in_days-desc" class="sr-only">Optional.</span>
+                        @error('distribution_sla_in_days')
+                            <div id="distribution_sla_in_days-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                     <div class="cc-form-group">
                         <label for="max_number_of_distribution_attempts">
                             Max number of distribution attempts
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="max_number_of_distribution_attempts" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', $case->max_number_of_distribution_attempts) }}" placeholder="Enter max distribution attempts" min="0" step="1" inputmode="numeric" required aria-required="true" aria-label="Max number of distribution attempts">
+                        <input type="number" id="max_number_of_distribution_attempts" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', $case->max_number_of_distribution_attempts) }}" placeholder="Enter max distribution attempts" min="0" step="1" inputmode="numeric" required aria-required="true" aria-label="Max number of distribution attempts" class="@error('max_number_of_distribution_attempts') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('max_number_of_distribution_attempts') ? 'true' : 'false' }}" @error('max_number_of_distribution_attempts') aria-describedby="max_number_of_distribution_attempts-error" @enderror>
+                        @error('max_number_of_distribution_attempts')
+                            <div id="max_number_of_distribution_attempts-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                     <div class="cc-form-group">
                         <label for="distribution_method">
                             Preferred distribution method
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <select id="distribution_method" name="distribution_method" required aria-required="true" aria-label="Preferred distribution method" aria-describedby="distribution_method_helper">
+                        <select id="distribution_method" name="distribution_method" required aria-required="true" aria-label="Preferred distribution method" aria-describedby="distribution_method_helper{{ $errors->has('distribution_method') ? ' distribution_method-error' : '' }}" class="@error('distribution_method') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('distribution_method') ? 'true' : 'false' }}">
                             <option value="">Select distribution method</option>
                             @foreach ($distributionMethods as $method)
                                 <option value="{{ $method->value }}" data-helper-text="{{ e($method->helper_text ?? '') }}" {{ old('distribution_method', $case->distribution_method_value) == $method->value ? 'selected' : '' }}>{{ $method->name }}</option>
                             @endforeach
                         </select>
                         <p id="distribution_method_helper" class="cc-section-hint cc-field-hint" role="status" aria-live="polite" aria-hidden="true"></p>
+                        @error('distribution_method')
+                            <div id="distribution_method-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                        @enderror
                     </div>
                 </div>
 
                 <div class="cc-form-row">
-                    <div class="cc-form-group cc-form-group-full">
+                    <div class="cc-form-group cc-form-group-full{{ $errors->has('asset_distributed_by') ? ' cc-has-error' : '' }}">
                         <fieldset>
                             <legend>
                                 Asset will be distributed by
@@ -121,7 +152,7 @@
                             @php
                                 $assetDistributedBy = old('asset_distributed_by', ($case->distribute_by_client ?? false) ? 'client' : 'legal_representative');
                             @endphp
-                            <div class="cc-radio-group" role="radiogroup" aria-label="Asset will be distributed by">
+                            <div class="cc-radio-group" role="radiogroup" aria-label="Asset will be distributed by" aria-invalid="{{ $errors->has('asset_distributed_by') ? 'true' : 'false' }}" @error('asset_distributed_by') aria-describedby="asset_distributed_by-error" @enderror>
                                 <label class="cc-radio-label">
                                     <input type="radio" name="asset_distributed_by" value="client" {{ $assetDistributedBy === 'client' ? 'checked' : '' }} required aria-required="true">
                                     Client
@@ -131,14 +162,20 @@
                                     Legal Representative
                                 </label>
                             </div>
+                            @error('asset_distributed_by')
+                                <div id="asset_distributed_by-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                            @enderror
                         </fieldset>
                     </div>
                 </div>
 
                 <div class="cc-form-group cc-form-group-full">
                     <label for="case_description">Case Description</label>
-                    <textarea id="case_description" name="case_description" placeholder="Enter detailed case description..." aria-describedby="case_description-desc">{{ old('case_description', $case->case_description) }}</textarea>
+                    <textarea id="case_description" name="case_description" placeholder="Enter detailed case description..." aria-describedby="case_description-desc{{ $errors->has('case_description') ? ' case_description-error' : '' }}" class="@error('case_description') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_description') ? 'true' : 'false' }}">{{ old('case_description', $case->case_description) }}</textarea>
                     <span id="case_description-desc" class="sr-only">Optional description for the case.</span>
+                    @error('case_description')
+                        <div id="case_description-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                    @enderror
                 </div>
 
                 <div class="cc-section-divider" aria-hidden="true"></div>
@@ -159,25 +196,39 @@
                     <div class="cc-form-row">
                         <div class="cc-form-group cc-form-group-full">
                             <label for="legal_hold_reason">Reason</label>
-                            <textarea id="legal_hold_reason" name="legal_hold_reason" placeholder="Enter legal hold reason..." rows="2" maxlength="4000" aria-label="Legal hold reason (4000 characters max)" aria-describedby="legal_hold_reason_count">{{ old('legal_hold_reason', $case->legal_hold_reason) }}</textarea>
+                            <textarea id="legal_hold_reason" name="legal_hold_reason" placeholder="Enter legal hold reason..." rows="2" maxlength="4000" aria-label="Legal hold reason (4000 characters max)" aria-describedby="legal_hold_reason_count{{ $errors->has('legal_hold_reason') ? ' legal_hold_reason-error' : '' }}" class="@error('legal_hold_reason') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('legal_hold_reason') ? 'true' : 'false' }}">{{ old('legal_hold_reason', $case->legal_hold_reason) }}</textarea>
                             <span id="legal_hold_reason_count" class="cc-char-count" aria-live="polite">0 / 4000</span>
+                            @error('legal_hold_reason')
+                                <div id="legal_hold_reason-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                            @enderror
                         </div>
                     </div>
                     <div class="cc-form-row">
                         <div class="cc-form-group">
                             <label for="legal_hold_start_date">Start Date</label>
-                            <input type="date" id="legal_hold_start_date" name="legal_hold_start_date" value="{{ old('legal_hold_start_date', $case->legal_hold_start_date ? $case->legal_hold_start_date->format('Y-m-d') : '') }}" aria-label="Legal hold start date">
+                            <input type="date" id="legal_hold_start_date" name="legal_hold_start_date" value="{{ old('legal_hold_start_date', $case->legal_hold_start_date ? $case->legal_hold_start_date->format('Y-m-d') : '') }}" aria-label="Legal hold start date" class="@error('legal_hold_start_date') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('legal_hold_start_date') ? 'true' : 'false' }}" @error('legal_hold_start_date') aria-describedby="legal_hold_start_date-error" @enderror>
+                            @error('legal_hold_start_date')
+                                <div id="legal_hold_start_date-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                            @enderror
                         </div>
                         <div class="cc-form-group">
                             <label for="legal_hold_end_date">End Date</label>
-                            <input type="date" id="legal_hold_end_date" name="legal_hold_end_date" value="{{ old('legal_hold_end_date', $case->legal_hold_end_date ? $case->legal_hold_end_date->format('Y-m-d') : '') }}" aria-label="Legal hold end date">
+                            <input type="date" id="legal_hold_end_date" name="legal_hold_end_date" value="{{ old('legal_hold_end_date', $case->legal_hold_end_date ? $case->legal_hold_end_date->format('Y-m-d') : '') }}" aria-label="Legal hold end date" class="@error('legal_hold_end_date') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('legal_hold_end_date') ? 'true' : 'false' }}" @error('legal_hold_end_date') aria-describedby="legal_hold_end_date-error" @enderror>
+                            @error('legal_hold_end_date')
+                                <div id="legal_hold_end_date-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                            @enderror
                         </div>
                     </div>
                 </div>
 
                 <div class="cc-section-divider" aria-hidden="true"></div>
-                <span class="cc-section-title">Case Users</span>
-                <p class="cc-section-hint" id="case-users-desc">Add or remove users. Search for an existing user by name or email, or enter details below. Only one Plaintiff and one Defendant allowed per case.</p>
+                <div class="cc-section-error-wrap{{ $errors->has('users') ? ' cc-has-error' : '' }}">
+                    <span class="cc-section-title">Case Users</span>
+                    <p class="cc-section-hint" id="case-users-desc">Add or remove users. Search for an existing user by name or email, or enter details below. Only one Plaintiff and one Defendant allowed per case.</p>
+                    @error('users')
+                        <div id="users-error" class="cc-section-error" role="alert">{{ $message }}</div>
+                    @enderror
+                </div>
 
                 <div id="usersWrapper" data-search-url="{{ url(route('admin.users.search')) }}">
                     @php
@@ -198,28 +249,43 @@
                                     </div>
                                     <div class="cc-form-group">
                                         <label for="users_{{ $i }}_email">Email <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="email" id="users_{{ $i }}_email" name="users[{{ $i }}][email]" value="{{ $r['email'] ?? '' }}" placeholder="email@example.com" required>
+                                        <input type="email" id="users_{{ $i }}_email" name="users[{{ $i }}][email]" value="{{ $r['email'] ?? '' }}" placeholder="email@example.com" required class="@error("users.$i.email") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.email") ? 'true' : 'false' }}" @error("users.$i.email") aria-describedby="users_{{ $i }}_email-error" @enderror>
+                                        @error("users.$i.email")
+                                            <div id="users_{{ $i }}_email-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group">
                                         <label for="users_{{ $i }}_name">Name <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="text" id="users_{{ $i }}_name" name="users[{{ $i }}][name]" value="{{ $r['name'] ?? '' }}" placeholder="Enter full name" required>
+                                        <input type="text" id="users_{{ $i }}_name" name="users[{{ $i }}][name]" value="{{ $r['name'] ?? '' }}" placeholder="Enter full name" required class="@error("users.$i.name") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.name") ? 'true' : 'false' }}" @error("users.$i.name") aria-describedby="users_{{ $i }}_name-error" @enderror>
+                                        @error("users.$i.name")
+                                            <div id="users_{{ $i }}_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group">
                                         <label for="users_{{ $i }}_phone">Phone <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="tel" id="users_{{ $i }}_phone" name="users[{{ $i }}][phone]" value="{{ $r['phone'] ?? $r['phone_number'] ?? '' }}" placeholder="(123) 456-7890" required>
+                                        <input type="tel" id="users_{{ $i }}_phone" name="users[{{ $i }}][phone]" value="{{ $r['phone'] ?? $r['phone_number'] ?? '' }}" placeholder="(123) 456-7890" required class="@error("users.$i.phone") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.phone") ? 'true' : 'false' }}" @error("users.$i.phone") aria-describedby="users_{{ $i }}_phone-error" @enderror>
+                                        @error("users.$i.phone")
+                                            <div id="users_{{ $i }}_phone-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group cc-contact-role-cell">
                                         <label for="users_{{ $i }}_role">Role <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <select id="users_{{ $i }}_role" name="users[{{ $i }}][role]" required class="cc-role-select">
+                                        <select id="users_{{ $i }}_role" name="users[{{ $i }}][role]" required class="cc-role-select @error("users.$i.role") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.role") ? 'true' : 'false' }}" @error("users.$i.role") aria-describedby="users_{{ $i }}_role-error" @enderror>
                                             <option value="">Select Role</option>
                                             @foreach ($role as $item)
                                                 <option value="{{ $item->value }}" {{ (isset($r['role']) && $r['role'] == $item->value) ? 'selected' : '' }}>{{ $item->name }}</option>
                                             @endforeach
                                         </select>
+                                        @error("users.$i.role")
+                                            <div id="users_{{ $i }}_role-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
                                         <label for="users_{{ $i }}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="number" id="users_{{ $i }}_distribution_value_cap" name="users[{{ $i }}][distribution_value_cap]" value="{{ $r['distribution_value_cap'] ?? '' }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap">
+                                        <input type="number" id="users_{{ $i }}_distribution_value_cap" name="users[{{ $i }}][distribution_value_cap]" value="{{ $r['distribution_value_cap'] ?? '' }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap" class="@error("users.$i.distribution_value_cap") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.distribution_value_cap") ? 'true' : 'false' }}" @error("users.$i.distribution_value_cap") aria-describedby="users_{{ $i }}_distribution_value_cap-error" @enderror>
+                                        @error("users.$i.distribution_value_cap")
+                                            <div id="users_{{ $i }}_distribution_value_cap-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="{{ $r['role'] ?? '' }}">
                                         <label class="cc-label-invisible">&nbsp;</label>
@@ -250,28 +316,43 @@
                                     </div>
                                     <div class="cc-form-group">
                                         <label for="users_{{ $idx }}_email">Email <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="email" id="users_{{ $idx }}_email" name="users[{{ $idx }}][email]" value="{{ old("users.$idx.email", $u->email ?? '') }}" placeholder="email@example.com" required>
+                                        <input type="email" id="users_{{ $idx }}_email" name="users[{{ $idx }}][email]" value="{{ old("users.$idx.email", $u->email ?? '') }}" placeholder="email@example.com" required class="@error("users.$idx.email") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.email") ? 'true' : 'false' }}" @error("users.$idx.email") aria-describedby="users_{{ $idx }}_email-error" @enderror>
+                                        @error("users.$idx.email")
+                                            <div id="users_{{ $idx }}_email-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group">
                                         <label for="users_{{ $idx }}_name">Name <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="text" id="users_{{ $idx }}_name" name="users[{{ $idx }}][name]" value="{{ old("users.$idx.name", $u->name ?? '') }}" placeholder="Enter full name" required>
+                                        <input type="text" id="users_{{ $idx }}_name" name="users[{{ $idx }}][name]" value="{{ old("users.$idx.name", $u->name ?? '') }}" placeholder="Enter full name" required class="@error("users.$idx.name") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.name") ? 'true' : 'false' }}" @error("users.$idx.name") aria-describedby="users_{{ $idx }}_name-error" @enderror>
+                                        @error("users.$idx.name")
+                                            <div id="users_{{ $idx }}_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group">
                                         <label for="users_{{ $idx }}_phone">Phone <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="tel" id="users_{{ $idx }}_phone" name="users[{{ $idx }}][phone]" value="{{ old("users.$idx.phone", $u->phone_number ?? '') }}" placeholder="(123) 456-7890" required>
+                                        <input type="tel" id="users_{{ $idx }}_phone" name="users[{{ $idx }}][phone]" value="{{ old("users.$idx.phone", $u->phone_number ?? '') }}" placeholder="(123) 456-7890" required class="@error("users.$idx.phone") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.phone") ? 'true' : 'false' }}" @error("users.$idx.phone") aria-describedby="users_{{ $idx }}_phone-error" @enderror>
+                                        @error("users.$idx.phone")
+                                            <div id="users_{{ $idx }}_phone-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group cc-contact-role-cell">
                                         <label for="users_{{ $idx }}_role">Role <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <select id="users_{{ $idx }}_role" name="users[{{ $idx }}][role]" required class="cc-role-select">
+                                        <select id="users_{{ $idx }}_role" name="users[{{ $idx }}][role]" required class="cc-role-select @error("users.$idx.role") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.role") ? 'true' : 'false' }}" @error("users.$idx.role") aria-describedby="users_{{ $idx }}_role-error" @enderror>
                                             <option value="">Select Role</option>
                                             @foreach ($role as $rl)
                                                 <option value="{{ $rl->value }}" {{ $selectedRole == $rl->value ? 'selected' : '' }}>{{ $rl->name }}</option>
                                             @endforeach
                                         </select>
+                                        @error("users.$idx.role")
+                                            <div id="users_{{ $idx }}_role-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
                                         <label for="users_{{ $idx }}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="number" id="users_{{ $idx }}_distribution_value_cap" name="users[{{ $idx }}][distribution_value_cap]" value="{{ old("users.$idx.distribution_value_cap", $mapping->distribution_value_cap) }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap">
+                                        <input type="number" id="users_{{ $idx }}_distribution_value_cap" name="users[{{ $idx }}][distribution_value_cap]" value="{{ old("users.$idx.distribution_value_cap", $mapping->distribution_value_cap) }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap" class="@error("users.$idx.distribution_value_cap") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.distribution_value_cap") ? 'true' : 'false' }}" @error("users.$idx.distribution_value_cap") aria-describedby="users_{{ $idx }}_distribution_value_cap-error" @enderror>
+                                        @error("users.$idx.distribution_value_cap")
+                                            <div id="users_{{ $idx }}_distribution_value_cap-error" class="cc-field-error" role="alert">{{ $message }}</div>
+                                        @enderror
                                     </div>
                                     <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="{{ $selectedRole }}">
                                         <label class="cc-label-invisible">&nbsp;</label>

@@ -1295,13 +1295,33 @@ a.text-info:hover {
     display: flex;
     align-items: flex-start;
     gap: 0.6rem;
+    width: 100%;
     padding: 0.75rem 0.9rem;
     border-radius: 10px;
     border: 1px solid rgba(245, 158, 11, 0.35);
     background: rgba(245, 158, 11, 0.1);
     color: #92400e;
     font-size: 0.875rem;
+    font-family: inherit;
+    text-align: left;
     grid-column: 1 / -1;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cs-dist-attention-banner:hover {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.55);
+}
+.cs-dist-attention-banner:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35);
+}
+.cs-dist-attention-banner-action {
+    display: inline;
+    margin-left: 0.35rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 .cs-dist-summary-stats {
     display: grid;
@@ -3606,6 +3626,48 @@ body.cs-asset-detail-open {
     outline: none;
     border-color: var(--cc-border-focus);
     box-shadow: 0 0 0 4px var(--cc-accent-light);
+}
+.case-create-modern .cc-form-group input.cc-is-invalid,
+.case-create-modern .cc-form-group select.cc-is-invalid,
+.case-create-modern .cc-form-group textarea.cc-is-invalid {
+    border-color: var(--cc-danger);
+}
+.case-create-modern .cc-form-group input.cc-is-invalid:focus,
+.case-create-modern .cc-form-group select.cc-is-invalid:focus,
+.case-create-modern .cc-form-group textarea.cc-is-invalid:focus {
+    border-color: var(--cc-danger);
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+}
+.case-create-modern .cc-field-error {
+    display: block;
+    margin-top: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #B91C1C;
+    line-height: 1.35;
+}
+.case-create-modern .cc-form-group.cc-has-error .cc-radio-group,
+.case-create-modern .cc-section-error-wrap.cc-has-error {
+    border: 2px solid var(--cc-danger);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    background: #FEF2F2;
+}
+.case-create-modern .cc-section-error-wrap {
+    grid-column: 1 / -1;
+}
+.case-create-modern .cc-section-error-wrap .cc-section-title {
+    grid-column: auto;
+}
+.case-create-modern .cc-section-error-wrap .cc-section-hint {
+    grid-column: auto;
+}
+.case-create-modern .cc-section-error {
+    display: block;
+    margin: 0.5rem 0 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #B91C1C;
 }
 .case-create-modern .cc-form-group input::placeholder,
 .case-create-modern .cc-form-group textarea::placeholder { color: var(--cc-text-muted); }

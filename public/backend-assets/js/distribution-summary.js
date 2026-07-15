@@ -234,14 +234,18 @@
                 ? ' need attention before you confirm.'
                 : ' require attention.';
             alert =
-                '<div class="cs-dist-attention-banner" role="alert">' +
+                '<button type="button" class="cs-dist-attention-banner" data-dist-goto-dont-want aria-label="View ' +
+                dontWantCount +
+                ' unclaimed asset' +
+                (dontWantCount === 1 ? '' : 's') +
+                ' in Don\'t Want">' +
                 '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>' +
                 '<span><strong>' +
                 dontWantCount +
                 '</strong> unclaimed asset' +
                 (dontWantCount === 1 ? '' : 's') +
                 msg +
-                '</span></div>';
+                ' <span class="cs-dist-attention-banner-action">View Don\'t Want</span></span></button>';
         }
 
         return (
@@ -382,6 +386,19 @@
                 panel.classList.toggle('is-active', active);
                 panel.hidden = !active;
             });
+        }
+
+        function goToDontWantTab() {
+            setDistTab('dont_want');
+            var tabBtn = rootEl.querySelector('[data-dist-tab="dont_want"]');
+            var panel = rootEl.querySelector('[data-dist-panel="dont_want"]');
+            var target = tabBtn || panel;
+            if (target && typeof target.scrollIntoView === 'function') {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            if (tabBtn && typeof tabBtn.focus === 'function') {
+                tabBtn.focus({ preventScroll: true });
+            }
         }
 
         function updateTabCounts(d) {
@@ -1192,6 +1209,15 @@
                 setDistTab(btn.getAttribute('data-dist-tab'));
             });
         });
+
+        if (statsEl) {
+            statsEl.addEventListener('click', function (e) {
+                var gotoBtn = e.target && e.target.closest('[data-dist-goto-dont-want]');
+                if (!gotoBtn) return;
+                e.preventDefault();
+                goToDontWantTab();
+            });
+        }
 
         if (reviewCheckbox && canConfirm) {
             reviewCheckbox.addEventListener('change', updateConfirmState);
