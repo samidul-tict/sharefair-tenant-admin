@@ -362,10 +362,11 @@ class ShareFairApiService
     {
         $payload = $this->request(function (PendingRequest $client) use ($caseId, $assignments) {
             $request = $client->asJson();
-            $body = [];
-            if (!empty($assignments)) {
-                $body['assignments'] = array_values($assignments);
-            }
+            // FastAPI expects a JSON object body. An empty PHP array encodes as []
+            // (a list), which fails with: "Input should be a valid dictionary or object".
+            $body = !empty($assignments)
+                ? ['assignments' => array_values($assignments)]
+                : new \stdClass();
 
             return $request->post("/cases/{$caseId}/items/distribute", $body);
         });
