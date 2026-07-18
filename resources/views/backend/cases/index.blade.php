@@ -187,33 +187,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    var searchInput = document.getElementById('cases-search');
+    var filterForm = document.querySelector('.cases-list-modern .filter-controls');
     var statusFilter = document.getElementById('cases-status-filter');
-    var table = document.querySelector('.cases-list-modern .table-container table');
-    if (!table) return;
-    var rows = table.querySelectorAll('tbody tr');
 
-    function filterRows() {
-        var searchTerm = (searchInput && searchInput.value) ? searchInput.value.toLowerCase() : '';
-        var statusVal = (statusFilter && statusFilter.value) ? statusFilter.value.toLowerCase() : '';
-
-        rows.forEach(function(row) {
-            if (row.cells.length < 2) return;
-            var caseNum = (row.querySelector('.case-number') || row.cells[1]).textContent.toLowerCase();
-            var caseType = (row.querySelector('.case-type') || row.cells[2]).textContent.toLowerCase();
-            var status = (row.querySelector('.status-badge') || row.cells[3]).textContent.toLowerCase();
-            var creator = (row.querySelector('.creator') || row.cells[5]).textContent.toLowerCase();
-            var legalHold = (row.querySelector('.legal-hold-yes, .legal-hold-no') || row.cells[4]).textContent.toLowerCase();
-
-            var matchSearch = !searchTerm || caseNum.includes(searchTerm) || caseType.includes(searchTerm) || status.includes(searchTerm) || creator.includes(searchTerm) || legalHold.includes(searchTerm);
-            var rowStatus = (row.getAttribute('data-case-status') || '').toLowerCase();
-            var matchStatus = !statusVal || rowStatus === statusVal;
-            row.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    // Status filtering must hit the server (full dataset + pagination).
+    // Client-side row hiding only sees the current page and misses matches on later pages.
+    if (filterForm && statusFilter) {
+        statusFilter.addEventListener('change', function () {
+            filterForm.submit();
         });
     }
-
-    if (searchInput) searchInput.addEventListener('input', filterRows);
-    if (statusFilter) statusFilter.addEventListener('change', filterRows);
 });
 </script>
 @endpush
