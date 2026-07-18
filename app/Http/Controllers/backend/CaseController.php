@@ -132,7 +132,7 @@ class CaseController extends Controller
         $caseUsers = $this->caseUsersWithDetails($id);
         $case->setRelation('caseUsers', $caseUsers);
 
-        $assetCount = Item::where('case_id', $id)->count();
+        $assetCount = Item::where('case_id', $id)->where('is_active', true)->count();
 
         $itemDataElementLabels = DB::table('data_element')
             ->whereIn('category_id', [7, 8, 10, 12, 14])
@@ -213,7 +213,8 @@ class CaseController extends Controller
 
         $query = Item::query()
             ->with(['location', 'assignedToUser'])
-            ->where('case_id', $id);
+            ->where('case_id', $id)
+            ->where('is_active', true);
 
         if ($search !== '') {
             $like = '%' . $search . '%';
@@ -372,7 +373,7 @@ class CaseController extends Controller
                 'next_page_url' => $assets->nextPageUrl(),
             ],
             'filters' => $this->caseAssetFilterOptions($id),
-            'total_in_case' => Item::where('case_id', $id)->count(),
+            'total_in_case' => Item::where('case_id', $id)->where('is_active', true)->count(),
             'sort' => [
                 'by' => $sortBy,
                 'order' => $sortOrder,
@@ -391,6 +392,7 @@ class CaseController extends Controller
             ->with(['location', 'assignedToUser'])
             ->where('case_id', $id)
             ->where('id', $itemId)
+            ->where('is_active', true)
             ->first();
 
         if (!$item) {
@@ -2289,7 +2291,7 @@ class CaseController extends Controller
 
     private function caseAssetFilterOptions(int $caseId): array
     {
-        $baseQuery = Item::query()->where('case_id', $caseId);
+        $baseQuery = Item::query()->where('case_id', $caseId)->where('is_active', true);
 
         $statuses = (clone $baseQuery)
             ->whereNotNull('status')
