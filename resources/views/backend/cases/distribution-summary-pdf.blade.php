@@ -94,6 +94,35 @@
         <p class="empty">No donations in this case.</p>
     @endif
 
+    <h2>Unresolved</h2>
+    @if(!empty($data['unresolved_items']))
+        @if(!empty($data['total_unresolved_items_value']))
+            <p class="alloc-meta">Total unresolved value: ${{ number_format((float) $data['total_unresolved_items_value'], 2) }}</p>
+        @endif
+        <table class="items">
+            <thead>
+                <tr><th>Asset</th><th>Price</th><th>Brand</th><th>Reason</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                @foreach($data['unresolved_items'] as $item)
+                    @php
+                        $price = $item['concluded_price'] ?? $item['purchase_price'] ?? null;
+                        $priceStr = $price !== null && $price !== '' ? '$' . number_format((float) $price, 2) : '—';
+                    @endphp
+                    <tr>
+                        <td>{{ $item['name'] ?? 'Unnamed' }}</td>
+                        <td>{{ $priceStr }}</td>
+                        <td>{{ $item['brand'] ?? '—' }}</td>
+                        <td>{{ $item['allocation_reason'] ?? '—' }}</td>
+                        <td>{{ $item['status_name'] ?? $item['status'] ?? '—' }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    @else
+        <p class="empty">No unresolved assets in this case.</p>
+    @endif
+
     <div class="footer">Share Fair · Distribution summary export · {{ $case->case_number }}</div>
 </body>
 </html>

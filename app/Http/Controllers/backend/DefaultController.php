@@ -94,6 +94,17 @@ class DefaultController extends Controller
             })->count()
             : 0;
 
+        $attorneyDistributionCases = $logUser
+            ? CourtCase::query()
+                ->with(['caseType', 'caseStatus'])
+                ->where('is_active', true)
+                ->accessibleTo($logUser)
+                ->needsAttorneyDistribution()
+                ->orderByDesc('last_modified_date')
+                ->limit(10)
+                ->get()
+            : collect();
+
         return view('backend.default.dashboard', compact(
             'caseCount',
             'employeeCount',
@@ -102,7 +113,8 @@ class DefaultController extends Controller
             'caseStatusLabels',
             'caseStatusData',
             'slaLabels',
-            'slaData'
+            'slaData',
+            'attorneyDistributionCases'
         ));
     }
 }

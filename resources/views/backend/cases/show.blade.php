@@ -81,6 +81,16 @@
         @if (request('distributed'))
             <div class="alert alert-success cs-flash-alert" role="alert">Assets distributed successfully.</div>
         @endif
+        @if($canDistribute ?? false)
+            <div class="cs-attention-banner cs-attention-banner-page" role="status">
+                <i class="fas fa-balance-scale" aria-hidden="true"></i>
+                <span>
+                    <strong>This case is ready for distribution.</strong>
+                    Parties have completed their steps. Review allocations and confirm division.
+                    <a href="{{ route('admin.cases.distribute.review', $case->id) }}" class="cs-attention-banner-action">Distribute assets</a>
+                </span>
+            </div>
+        @endif
         <nav class="cs-breadcrumb" aria-label="Breadcrumb">
             <a href="{{ route('admin.dashboard') }}">Dashboard</a>
             <span class="cs-breadcrumb-sep" aria-hidden="true">/</span>

@@ -59,6 +59,7 @@ class DistributionSummaryExportService
         $this->buildAllocationSheet($spreadsheet->createSheet(), 'Non-marital', $data['non_marital_assets'] ?? [], $data, false);
         $this->buildItemsSheet($spreadsheet->createSheet(), "Don't Want", $data['dont_want_items'] ?? []);
         $this->buildItemsSheet($spreadsheet->createSheet(), 'Donations', $data['donation_items'] ?? []);
+        $this->buildItemsSheet($spreadsheet->createSheet(), 'Unresolved', $data['unresolved_items'] ?? [], includeStatus: true);
 
         $spreadsheet->setActiveSheetIndex(0);
 
@@ -156,13 +157,17 @@ class DistributionSummaryExportService
         }
     }
 
-    private function buildItemsSheet($sheet, string $title, array $items): void
+    private function buildItemsSheet($sheet, string $title, array $items, bool $includeStatus = false): void
     {
         $sheet->setTitle(substr($title, 0, 31));
 
         $headers = ['Asset name', 'Price', 'Brand', 'Allocation reason'];
+        if ($includeStatus) {
+            $headers[] = 'Status';
+        }
         $sheet->fromArray($headers, null, 'A1');
-        $this->styleHeaderRow($sheet, 'A1:D1');
+        $headerRange = 'A1:' . chr(ord('A') + count($headers) - 1) . '1';
+        $this->styleHeaderRow($sheet, $headerRange);
 
         $row = 2;
         if (empty($items)) {
@@ -171,16 +176,20 @@ class DistributionSummaryExportService
         }
 
         foreach ($items as $item) {
-            $sheet->fromArray([
+            $rowData = [
                 $item['name'] ?? 'Unnamed asset',
                 $this->formatMoney($this->itemPrice($item)),
                 $item['brand'] ?? '—',
                 $item['allocation_reason'] ?? '—',
-            ], null, 'A' . $row);
+            ];
+            if ($includeStatus) {
+                $rowData[] = $item['status_name'] ?? $item['status'] ?? '—';
+            }
+            $sheet->fromArray($rowData, null, 'A' . $row);
             $row++;
         }
 
-        foreach (range('A', 'D') as $col) {
+        foreach (range('A', chr(ord('A') + count($headers) - 1)) as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
     }

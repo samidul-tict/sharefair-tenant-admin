@@ -66,6 +66,7 @@ class CaseController extends Controller
         
         $search     = $request->input('search');
         $statusFilter = $request->input('status');
+        $attentionFilter = $request->input('attention');
         $sortField  = $request->input('sort', 'case_number');
         $sortOrder  = $request->input('order', 'asc');
 
@@ -90,6 +91,9 @@ class CaseController extends Controller
                 })
                 ->when($statusFilter, function ($query, $status) {
                     $query->where('case_status_value', $status);
+                })
+                ->when($attentionFilter === 'attorney_distribute', function ($query) {
+                    $query->needsAttorneyDistribution();
                 })
                 ->orderBy($sortField, $sortOrder)
                 ->paginate(10);
@@ -117,7 +121,7 @@ class CaseController extends Controller
                 ->get();
         }
 
-        return view('backend.cases.index', compact('cases', 'search', 'sortField', 'sortOrder', 'logUser', 'caseTypes', 'caseStatuses'));
+        return view('backend.cases.index', compact('cases', 'search', 'sortField', 'sortOrder', 'logUser', 'caseTypes', 'caseStatuses', 'attentionFilter'));
     }
 
 

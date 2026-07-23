@@ -38,6 +38,13 @@
                     <input type="text" id="cases-search" name="search" class="search-input" placeholder="Search case no / type / status..." value="{{ $search ?? '' }}" aria-label="Search case number, type, or status">
                 </div>
                 <div class="filter-group">
+                    <label class="filter-label" for="cases-attention-filter">Attention</label>
+                    <select id="cases-attention-filter" name="attention" aria-label="Filter by attention">
+                        <option value="">All cases</option>
+                        <option value="attorney_distribute" {{ ($attentionFilter ?? '') === 'attorney_distribute' ? 'selected' : '' }}>Ready for attorney distribution</option>
+                    </select>
+                </div>
+                <div class="filter-group">
                     <label class="filter-label" for="cases-status-filter">Status Filter</label>
                     <select id="cases-status-filter" name="status" aria-label="Filter by status">
                         <option value="">-- Status Filter --</option>
@@ -85,7 +92,7 @@
                             $statusClass = 'status-pending';
                         }
                     @endphp
-                    <tr data-case-status="{{ $case->case_status_value ?? '' }}">
+                    <tr data-case-status="{{ $case->case_status_value ?? '' }}" @if($case->needsAttorneyDistribution()) class="cases-row-action-required" @endif>
                         <td class="row-number">{{ $cases->firstItem() + $index }}</td>
                         <td>
                             <a href="{{ route('admin.cases.show', ['id' => $case->id]) }}" class="case-number">{{ $case->case_number }}</a>
@@ -99,6 +106,9 @@
                                 </span>
                             @else
                                 <span class="status-badge status-new">{{ $case->case_status_value }}</span>
+                            @endif
+                            @if($case->needsAttorneyDistribution())
+                                <span class="cs-attention-badge cs-attention-badge-inline">Action required</span>
                             @endif
                         </td>
                         <td>

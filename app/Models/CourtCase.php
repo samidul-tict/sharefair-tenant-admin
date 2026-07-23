@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\DataElement;
+use App\Models\User;
 
 class CourtCase extends Model
 {
@@ -131,5 +132,50 @@ class CourtCase extends Model
     {
         return $this->case_status_value === 'PEND_APP'
             && !($this->distribute_by_client === true);
+    }
+
+    /**
+     * Whether this case awaits attorney-driven distribution (PEND_DIS, not client-distributed).
+     */
+    public function needsAttorneyDistribution(): bool
+    {
+        return $this->canLegalRepresentativeDistribute();
+    }
+
+    /**
+     * Cases where the legal representative must run distribution.
+     */
+    public function scopeNeedsAttorneyDistribution($query)
+    {
+        return $query
+            ->where('case_status_value', 'PEND_DIS')
+            ->where(function ($q) {
+                $q->where('distribute_by_client', false)->orWhereNull('distribute_by_client');
+            });
+    }
+
+    /**
+     * Restrict to cases the given admin user may access (creator or mapped participant).
+     */
+    public function scopeAccessibleTo($query, ?User $user)
+    {
+        if ($user && $user->user_role_id === 'EMP') {
+            return $query->whereIn('id', function ($subQuery) use ($user) {
+                $subQuery->select('case_id')
+                    ->from('case_user_mapping')
+                    ->where('user_id', $user->id);
+            });
+        }
+
+        $userId = $user?->id ?? auth()->id();
+
+        return $query->where(function ($q) use ($userId) {
+            $q->where('created_by', $userId)
+                ->orWhereIn('id', function ($sub) use ($userId) {
+                    $sub->select('case_id')
+                        ->from('case_user_mapping')
+                        ->where('user_id', $userId);
+                });
+        });
     }
 }

@@ -805,6 +805,9 @@ a.text-info:hover {
 .cs-dist-tab-success.is-active {
     background: linear-gradient(135deg, #059669, #10b981);
 }
+.cs-dist-tab-muted.is-active {
+    background: linear-gradient(135deg, #475569, #64748b);
+}
 .cs-dist-summary-panels {
     min-height: 200px;
 }
@@ -825,6 +828,7 @@ a.text-info:hover {
 }
 .cs-dist-panel-title-danger { color: #b91c1c; }
 .cs-dist-panel-title-success { color: #047857; }
+.cs-dist-panel-title-muted { color: #475569; }
 .cs-dist-panel-desc {
     margin: 0 0 0.85rem;
     font-size: 0.8125rem;
@@ -1084,6 +1088,15 @@ a.text-info:hover {
     font-size: 0.75rem;
     color: var(--cs-text-secondary);
 }
+.cs-dist-item-status {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    border: 1px solid rgba(100, 116, 139, 0.35);
+    background: rgba(100, 116, 139, 0.1);
+    color: #475569;
+}
 .cs-dist-allocation-board .cs-dist-item-row {
     margin-bottom: 0.55rem;
     padding: 0.65rem;
@@ -1151,6 +1164,10 @@ a.text-info:hover {
 .cs-dist-item-list-success {
     border-color: rgba(16, 185, 129, 0.25);
     background: rgba(16, 185, 129, 0.03);
+}
+.cs-dist-item-list-muted {
+    border-color: rgba(100, 116, 139, 0.25);
+    background: rgba(100, 116, 139, 0.04);
 }
 .cs-dist-donation-meta {
     display: flex;
@@ -1322,6 +1339,129 @@ a.text-info:hover {
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 2px;
+}
+.cs-dist-attention-banner-block {
+    border-color: rgba(100, 116, 139, 0.45);
+    background: rgba(100, 116, 139, 0.12);
+    color: #334155;
+    cursor: pointer;
+}
+.cs-dist-attention-banner-block:hover {
+    background: rgba(100, 116, 139, 0.2);
+    border-color: rgba(100, 116, 139, 0.6);
+}
+.cs-dist-unresolved-icon {
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
+}
+.cs-dist-unresolved-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin: 0 0 0.85rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 10px;
+    border: 1px solid rgba(100, 116, 139, 0.35);
+    background: rgba(100, 116, 139, 0.08);
+    color: #334155;
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+.cs-dist-unresolved-notice-link {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+.cs-dist-unresolved-notice-link:hover {
+    color: #0f172a;
+}
+
+/* Shared attorney attention cues (dashboard, cases list, case show) */
+.cs-attention-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.75rem 0.9rem;
+    border-radius: 10px;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    background: rgba(245, 158, 11, 0.1);
+    color: #92400e;
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+.cs-attention-banner-page {
+    margin-bottom: 1rem;
+}
+.cs-attention-banner-action {
+    display: inline;
+    margin-left: 0.35rem;
+    font-weight: 700;
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.cs-attention-banner-action:hover {
+    color: #78350f;
+}
+.cs-attention-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    background: rgba(245, 158, 11, 0.14);
+    color: #92400e;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.cs-attention-badge-inline {
+    margin-left: 0.45rem;
+    vertical-align: middle;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.6875rem;
+}
+.cases-row-action-required {
+    background: rgba(245, 158, 11, 0.06);
+    box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.75);
+}
+.cases-list-modern tr.cases-row-action-required:hover {
+    background: rgba(245, 158, 11, 0.1);
+}
+.dashboard-action-required-card .card-header {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+.dashboard-action-required-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cl-text-secondary, #64748b);
+    border-top: none;
+}
+.dashboard-action-required-table td {
+    vertical-align: middle;
+}
+.cs-btn-sm.cs-btn-distribute-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8125rem;
+    border-radius: 8px;
+    text-decoration: none;
+    white-space: nowrap;
 }
 .cs-dist-summary-stats {
     display: grid;

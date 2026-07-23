@@ -115,6 +115,7 @@ class ShareFairApiService
         $data['target_value_per_user'] = $targetPerUser;
 
         $data = $this->enrichPreviewItemBrands($data);
+        $data = $this->enrichPreviewItemStatusLabels($data);
 
         if ($hasNestedData) {
             $payload['data'] = $data;
@@ -165,6 +166,7 @@ class ShareFairApiService
             $data['donation_items'] ?? [],
             $data['unassigned_items'] ?? [],
             $data['adjust_available_items'] ?? [],
+            $data['unresolved_items'] ?? [],
         ] as $section) {
             if (!is_array($section)) {
                 continue;
@@ -223,8 +225,76 @@ class ShareFairApiService
         $data['donation_items'] = $this->enrichFlatItemBrands($data['donation_items'] ?? [], $brandLabels, $itemRecords);
         $data['unassigned_items'] = $this->enrichFlatItemBrands($data['unassigned_items'] ?? [], $brandLabels, $itemRecords);
         $data['adjust_available_items'] = $this->enrichFlatItemBrands($data['adjust_available_items'] ?? [], $brandLabels, $itemRecords);
+        $data['unresolved_items'] = $this->enrichFlatItemBrands($data['unresolved_items'] ?? [], $brandLabels, $itemRecords);
 
         return $data;
+    }
+
+    private function itemStatusLabels(): \Illuminate\Support\Collection
+    {
+        return DB::table('data_element')
+            ->join('data_category', 'data_element.category_id', '=', 'data_category.id')
+            ->where('data_category.name', 'Item Status')
+            ->where('data_element.is_active', true)
+            ->pluck('data_element.name', 'data_element.value');
+    }
+
+    private function enrichPreviewItemStatusLabels(array $data): array
+    {
+        $statusLabels = $this->itemStatusLabels();
+        if ($statusLabels->isEmpty()) {
+            return $data;
+        }
+
+        foreach ([
+            'adjust_available_items',
+            'unassigned_items',
+            'unresolved_items',
+            'dont_want_items',
+            'donation_items',
+        ] as $sectionKey) {
+            $data[$sectionKey] = $this->enrichFlatItemStatusLabels(
+                $data[$sectionKey] ?? [],
+                $statusLabels
+            );
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrichFlatItemStatusLabels(array $items, \Illuminate\Support\Collection $statusLabels): array
+    {
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $storedStatus = $item['status'] ?? null;
+            $reason = (string) ($item['allocation_reason'] ?? '');
+
+            if ($storedStatus && empty($item['status_name']) && $statusLabels->has($storedStatus)) {
+                $item['status_name'] = $statusLabels->get($storedStatus);
+            }
+
+            if ($reason !== '' && $statusLabels->has($reason)) {
+                $item['allocation_reason'] = $statusLabels->get($reason);
+            } elseif (
+                $storedStatus
+                && $statusLabels->has($storedStatus)
+                && ($reason === '' || $reason === $storedStatus || in_array($reason, ['Unassigned', 'Available'], true))
+            ) {
+                $item['allocation_reason'] = $statusLabels->get($storedStatus);
+                $item['status'] = $storedStatus;
+            }
+
+            $items[$index] = $item;
+        }
+
+        return $items;
     }
 
     private function loadPreviewItemRecords(array $data): Collection
@@ -238,6 +308,7 @@ class ShareFairApiService
             $data['donation_items'] ?? [],
             $data['unassigned_items'] ?? [],
             $data['adjust_available_items'] ?? [],
+            $data['unresolved_items'] ?? [],
         ] as $section) {
             if (!is_array($section)) {
                 continue;

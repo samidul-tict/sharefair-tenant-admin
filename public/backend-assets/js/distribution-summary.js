@@ -56,13 +56,22 @@
         return 'cs-dist-reason-default';
     }
 
+    function itemDisplayReason(item) {
+        if (!item) return '';
+        if (item.status_name) return item.status_name;
+        var reason = item.allocation_reason || '';
+        if (reason) return reason;
+        return item.status || '';
+    }
+
     function renderItemRow(item) {
         var price = itemPrice(item);
-        var reason = item.allocation_reason
+        var displayReason = itemDisplayReason(item);
+        var reason = displayReason
             ? '<span class="cs-dist-reason-badge ' +
-              allocationReasonClass(item.allocation_reason) +
+              allocationReasonClass(displayReason) +
               '">' +
-              esc(item.allocation_reason) +
+              esc(displayReason) +
               '</span>'
             : '';
         var brand = item.brand || item.brand_name
@@ -228,12 +237,31 @@
 
     function renderSummaryStats(d, canConfirm) {
         var dontWantCount = (d.dont_want_items || []).length;
+        var unresolvedCount = (d.unresolved_items || []).length;
         var alert = '';
+        if (unresolvedCount > 0) {
+            var unresolvedMsg = canConfirm
+                ? ' need attention before you confirm.'
+                : ' require attention.';
+            alert +=
+                '<button type="button" class="cs-dist-attention-banner" data-dist-goto-unresolved aria-label="View ' +
+                unresolvedCount +
+                ' unresolved asset' +
+                (unresolvedCount === 1 ? '' : 's') +
+                ' in Unresolved">' +
+                '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
+                '<span><strong>' +
+                unresolvedCount +
+                '</strong> unresolved asset' +
+                (unresolvedCount === 1 ? '' : 's') +
+                unresolvedMsg +
+                ' <span class="cs-dist-attention-banner-action">View Unresolved</span></span></button>';
+        }
         if (dontWantCount > 0) {
             var msg = canConfirm
                 ? ' need attention before you confirm.'
                 : ' require attention.';
-            alert =
+            alert +=
                 '<button type="button" class="cs-dist-attention-banner" data-dist-goto-dont-want aria-label="View ' +
                 dontWantCount +
                 ' unclaimed asset' +
@@ -302,6 +330,10 @@
         var statsEl = rootEl.querySelector('[data-dist-stats]');
         var confirmBtn = rootEl.querySelector('[data-dist-confirm]');
         var reviewCheckbox = rootEl.querySelector('[data-dist-reviewed]');
+        var unresolvedNoticeEl = rootEl.querySelector('[data-dist-unresolved-notice]');
+        var unresolvedModal = pageScope.querySelector('[data-dist-unresolved-modal]');
+        var unresolvedModalLead = pageScope.querySelector('[data-dist-unresolved-modal-lead]');
+        var unresolvedProceedBtn = pageScope.querySelector('[data-dist-unresolved-proceed]');
         var adjustOpenBtn = pageScope.querySelector('[data-dist-adjust-open]');
         var actionsAside = pageScope.querySelector('.cs-distribute-page-actions');
         var previewOk = false;
@@ -323,6 +355,90 @@
             if (!confirmBtn) return;
             var reviewed = reviewCheckbox ? reviewCheckbox.checked : true;
             confirmBtn.disabled = !(previewOk && reviewed);
+            confirmBtn.removeAttribute('title');
+            updateUnresolvedNotice();
+        }
+
+        function unresolvedItemCount() {
+            return (currentData && (currentData.unresolved_items || []).length) || 0;
+        }
+
+        function updateUnresolvedNotice() {
+            if (!unresolvedNoticeEl || !canConfirm) return;
+            var unresolvedCount = unresolvedItemCount();
+            if (!unresolvedCount) {
+                unresolvedNoticeEl.hidden = true;
+                unresolvedNoticeEl.textContent = '';
+                return;
+            }
+            unresolvedNoticeEl.hidden = false;
+            unresolvedNoticeEl.innerHTML =
+                '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
+                '<span><strong>Unresolved assets present.</strong> ' +
+                unresolvedCount +
+                ' unresolved asset' +
+                (unresolvedCount === 1 ? '' : 's') +
+                ' will remain outside this distribution if you confirm. After distribution is confirmed, they can no longer be addressed through this workflow. ' +
+                '<button type="button" class="cs-dist-unresolved-notice-link" data-dist-goto-unresolved>Review unresolved assets</button></span>';
+        }
+
+        function openUnresolvedConfirmModal(unresolvedCount) {
+            if (!unresolvedModal) return false;
+            if (unresolvedModalLead) {
+                unresolvedModalLead.textContent =
+                    'This case has ' +
+                    unresolvedCount +
+                    ' unresolved asset' +
+                    (unresolvedCount === 1 ? '' : 's') +
+                    '. Are you okay with keeping them unresolved and proceeding with distribution?';
+            }
+            unresolvedModal.hidden = false;
+            if (unresolvedProceedBtn && typeof unresolvedProceedBtn.focus === 'function') {
+                unresolvedProceedBtn.focus();
+            }
+            return true;
+        }
+
+        function closeUnresolvedConfirmModal() {
+            if (!unresolvedModal) return;
+            unresolvedModal.hidden = true;
+        }
+
+        function submitDistribution() {
+            if (!confirmBtn) return;
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Dividing…';
+            if (errorEl) errorEl.hidden = true;
+
+            fetch(distributeUrl, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({}),
+            })
+                .then(function (res) {
+                    return res.json().then(function (data) {
+                        return { ok: res.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (!result.ok || !result.data.status) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = 'Confirm division';
+                        showError((result.data && result.data.message) || 'Distribution failed.');
+                        return;
+                    }
+                    window.location.href = successUrl;
+                })
+                .catch(function () {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Confirm division';
+                    showError('Distribution failed. Please try again.');
+                });
         }
 
         function itemPriceNum(item) {
@@ -401,17 +517,32 @@
             }
         }
 
+        function goToUnresolvedTab() {
+            setDistTab('unresolved');
+            var tabBtn = rootEl.querySelector('[data-dist-tab="unresolved"]');
+            var panel = rootEl.querySelector('[data-dist-panel="unresolved"]');
+            var target = tabBtn || panel;
+            if (target && typeof target.scrollIntoView === 'function') {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            if (tabBtn && typeof tabBtn.focus === 'function') {
+                tabBtn.focus({ preventScroll: true });
+            }
+        }
+
         function updateTabCounts(d) {
             var allocCount = Object.keys(d.allocations || {}).length;
             var nonMaritalCount = Object.keys(d.non_marital_assets || {}).length;
             var dontWantCount = (d.dont_want_items || []).length;
             var donationCount = (d.donation_items || []).length;
+            var unresolvedCount = (d.unresolved_items || []).length;
 
             var map = {
                 allocations: allocCount,
                 non_marital: nonMaritalCount,
                 dont_want: dontWantCount,
                 donations: donationCount,
+                unresolved: unresolvedCount,
             };
 
             rootEl.querySelectorAll('[data-dist-tab]').forEach(function (btn) {
@@ -555,6 +686,36 @@
                         '</div>';
                 }
             }
+
+            var unresolvedPanel = rootEl.querySelector('[data-dist-panel="unresolved"]');
+            if (unresolvedPanel) {
+                var unresolvedItems = d.unresolved_items || [];
+                var unresolvedCount = unresolvedItems.length;
+                var unresolvedTotal = d.total_unresolved_items_value || 0;
+                if (unresolvedCount === 0) {
+                    unresolvedPanel.innerHTML =
+                        '<h3 class="cs-dist-panel-title cs-dist-panel-title-muted"><i class="fas fa-hourglass-half" aria-hidden="true"></i> Unresolved</h3>' +
+                        '<p class="cs-dist-panel-desc">Assets still in workflow before distribution is complete.</p>' +
+                        '<div class="cs-dist-panel-empty">No unresolved assets in this case.</div>';
+                } else {
+                    unresolvedPanel.innerHTML =
+                        '<h3 class="cs-dist-panel-title cs-dist-panel-title-muted"><i class="fas fa-hourglass-half" aria-hidden="true"></i> Unresolved</h3>' +
+                        '<p class="cs-dist-panel-desc">Assets awaiting confirmation, pricing, conflict resolution, or other party action.</p>' +
+                        '<div class="cs-dist-donation-meta">' +
+                        '<span>' +
+                        unresolvedCount +
+                        ' item' +
+                        (unresolvedCount === 1 ? '' : 's') +
+                        '</span>' +
+                        (unresolvedTotal > 0
+                            ? '<span>Total value <strong>' + formatMoney(unresolvedTotal) + '</strong></span>'
+                            : '') +
+                        '</div>' +
+                        '<div class="cs-dist-item-list cs-dist-item-list-muted">' +
+                        unresolvedItems.map(renderItemRow).join('') +
+                        '</div>';
+                }
+            }
         }
 
         function bindItemToggles() {
@@ -620,10 +781,12 @@
             renderPanels(currentData);
             bindItemToggles();
 
-            var defaultTab =
-                canConfirm && (currentData.dont_want_items || []).length > 0
-                    ? 'dont_want'
-                    : 'allocations';
+            var defaultTab = 'allocations';
+            if (canConfirm && (currentData.unresolved_items || []).length > 0) {
+                defaultTab = 'unresolved';
+            } else if (canConfirm && (currentData.dont_want_items || []).length > 0) {
+                defaultTab = 'dont_want';
+            }
             setDistTab(defaultTab);
 
             if (summaryRoot) summaryRoot.hidden = false;
@@ -862,11 +1025,12 @@
                           .map(function (item) {
                               var itemId = Number(item.id || item.item_id || 0);
                               var price = itemPriceNum(item);
-                              var reason = item.allocation_reason
+                              var displayReason = itemDisplayReason(item);
+                              var reason = displayReason
                                   ? '<span class="cs-dist-reason-badge ' +
-                                    allocationReasonClass(item.allocation_reason) +
+                                    allocationReasonClass(displayReason) +
                                     '">' +
-                                    esc(item.allocation_reason) +
+                                    esc(displayReason) +
                                     '</span>'
                                   : '';
                               var brand = itemBrand(item)
@@ -1210,14 +1374,17 @@
             });
         });
 
-        if (statsEl) {
-            statsEl.addEventListener('click', function (e) {
-                var gotoBtn = e.target && e.target.closest('[data-dist-goto-dont-want]');
-                if (!gotoBtn) return;
+        pageScope.addEventListener('click', function (e) {
+            if (e.target && e.target.closest('[data-dist-goto-dont-want]')) {
                 e.preventDefault();
                 goToDontWantTab();
-            });
-        }
+                return;
+            }
+            if (e.target && e.target.closest('[data-dist-goto-unresolved]')) {
+                e.preventDefault();
+                goToUnresolvedTab();
+            }
+        });
 
         if (reviewCheckbox && canConfirm) {
             reviewCheckbox.addEventListener('change', updateConfirmState);
@@ -1259,44 +1426,34 @@
         if (adjustCancelBtn) adjustCancelBtn.addEventListener('click', cancelAdjustments);
         if (adjustApplyBtn) adjustApplyBtn.addEventListener('click', applyAdjustments);
 
+        if (unresolvedModal && canConfirm) {
+            unresolvedModal.querySelectorAll('[data-dist-unresolved-cancel]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    closeUnresolvedConfirmModal();
+                    goToUnresolvedTab();
+                });
+            });
+            if (unresolvedProceedBtn) {
+                unresolvedProceedBtn.addEventListener('click', function () {
+                    closeUnresolvedConfirmModal();
+                    submitDistribution();
+                });
+            }
+            pageScope.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && unresolvedModal && !unresolvedModal.hidden) {
+                    closeUnresolvedConfirmModal();
+                }
+            });
+        }
+
         if (confirmBtn && canConfirm) {
             confirmBtn.addEventListener('click', function () {
                 if (!previewOk || confirmBtn.disabled) return;
-                confirmBtn.disabled = true;
-                confirmBtn.textContent = 'Dividing…';
-                if (errorEl) errorEl.hidden = true;
-
-                fetch(distributeUrl, {
-                    method: 'POST',
-                    headers: {
-                        Accept: 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: JSON.stringify({}),
-                })
-                    .then(function (res) {
-                        return res.json().then(function (data) {
-                            return { ok: res.ok, data: data };
-                        });
-                    })
-                    .then(function (result) {
-                        if (!result.ok || !result.data.status) {
-                            confirmBtn.disabled = false;
-                            confirmBtn.textContent = 'Confirm division';
-                            showError(
-                                (result.data && result.data.message) || 'Distribution failed.'
-                            );
-                            return;
-                        }
-                        window.location.href = successUrl;
-                    })
-                    .catch(function () {
-                        confirmBtn.disabled = false;
-                        confirmBtn.textContent = 'Confirm division';
-                        showError('Distribution failed. Please try again.');
-                    });
+                var unresolvedCount = unresolvedItemCount();
+                if (unresolvedCount > 0 && openUnresolvedConfirmModal(unresolvedCount)) {
+                    return;
+                }
+                submitDistribution();
             });
         }
 

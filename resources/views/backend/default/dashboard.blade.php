@@ -58,6 +58,59 @@
         </div>
 
         <div class="row mt-4">
+            <div class="col-12">
+                <div class="card dashboard-action-required-card">
+                    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <h4 class="card-title mb-0">Action required</h4>
+                        @if(($attorneyDistributionCases ?? collect())->isNotEmpty())
+                            <span class="cs-attention-badge">{{ $attorneyDistributionCases->count() }} case{{ $attorneyDistributionCases->count() === 1 ? '' : 's' }}</span>
+                        @endif
+                    </div>
+                    <div class="card-body p-0">
+                        @if(($attorneyDistributionCases ?? collect())->isEmpty())
+                            <p class="text-muted mb-0 px-4 py-4">No cases currently require distribution.</p>
+                        @else
+                            <div class="table-responsive">
+                                <table class="table dashboard-action-required-table mb-0">
+                                    <caption class="sr-only">Cases ready for attorney distribution</caption>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Case number</th>
+                                            <th scope="col">Case type</th>
+                                            <th scope="col">Status</th>
+                                            <th scope="col" class="text-end">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($attorneyDistributionCases as $actionCase)
+                                            <tr class="cases-row-action-required">
+                                                <td>
+                                                    <a href="{{ route('admin.cases.show', $actionCase->id) }}" class="case-number">{{ $actionCase->case_number }}</a>
+                                                </td>
+                                                <td>{{ $actionCase->caseType?->name ?? $actionCase->case_type_value }}</td>
+                                                <td>
+                                                    <span class="status-badge status-pending">
+                                                        <span class="status-dot" aria-hidden="true"></span>
+                                                        {{ $actionCase->caseStatus?->name ?? $actionCase->case_status_value }}
+                                                    </span>
+                                                </td>
+                                                <td class="text-end">
+                                                    <a href="{{ route('admin.cases.distribute.review', $actionCase->id) }}" class="cs-btn-primary cs-btn-sm cs-btn-distribute-inline">
+                                                        <i class="fas fa-balance-scale" aria-hidden="true"></i> Distribute assets
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
             <div class="col-xl-4 col-lg-6 col-md-12">
                 <div class="card">
                     <div class="card-header">

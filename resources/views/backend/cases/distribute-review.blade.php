@@ -126,6 +126,7 @@
                     <button type="button" class="cs-dist-tab cs-dist-tab-warning" role="tab" id="dist-tab-non_marital" aria-selected="false" aria-controls="dist-panel-non_marital" data-dist-tab="non_marital" data-dist-tab-label="Non-marital">Non-marital</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-danger" role="tab" id="dist-tab-dont_want" aria-selected="false" aria-controls="dist-panel-dont_want" data-dist-tab="dont_want" data-dist-tab-label="Don't Want">Don't Want</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-success" role="tab" id="dist-tab-donations" aria-selected="false" aria-controls="dist-panel-donations" data-dist-tab="donations" data-dist-tab-label="Donations">Donations</button>
+                    <button type="button" class="cs-dist-tab cs-dist-tab-muted" role="tab" id="dist-tab-unresolved" aria-selected="false" aria-controls="dist-panel-unresolved" data-dist-tab="unresolved" data-dist-tab-label="Unresolved">Unresolved</button>
                 </div>
 
                 <div class="cs-dist-summary-panels">
@@ -133,6 +134,7 @@
                     <div class="cs-dist-panel" role="tabpanel" id="dist-panel-non_marital" aria-labelledby="dist-tab-non_marital" data-dist-panel="non_marital" hidden></div>
                     <div class="cs-dist-panel" role="tabpanel" id="dist-panel-dont_want" aria-labelledby="dist-tab-dont_want" data-dist-panel="dont_want" hidden></div>
                     <div class="cs-dist-panel" role="tabpanel" id="dist-panel-donations" aria-labelledby="dist-tab-donations" data-dist-panel="donations" hidden></div>
+                    <div class="cs-dist-panel" role="tabpanel" id="dist-panel-unresolved" aria-labelledby="dist-tab-unresolved" data-dist-panel="unresolved" hidden></div>
                 </div>
             </div>
 
@@ -171,6 +173,7 @@
 
             @if($canConfirmDistribute ?? false)
             <aside class="cs-distribute-page-actions" aria-label="Distribution actions">
+                <div class="cs-dist-unresolved-notice" data-dist-unresolved-notice hidden role="alert"></div>
                 <label class="cs-distribute-review-check">
                     <input type="checkbox" data-dist-reviewed>
                     <span>I have reviewed the proposed allocations and understand this action cannot be undone.</span>
@@ -267,6 +270,39 @@
 </div>
 
 @include('backend.cases.partials.close-case-modal')
+
+@if($canConfirmDistribute ?? false)
+<div class="cs-dist-email-modal cs-dist-unresolved-modal" data-dist-unresolved-modal hidden>
+    <div class="cs-dist-email-backdrop" data-dist-unresolved-cancel></div>
+    <div class="cs-dist-email-dialog cs-dist-unresolved-dialog" role="dialog" aria-modal="true" aria-labelledby="distUnresolvedTitle" aria-describedby="distUnresolvedDescription">
+        <div class="cs-dist-email-header">
+            <div class="cs-case-close-heading">
+                <span class="cs-case-close-icon cs-dist-unresolved-icon" aria-hidden="true">
+                    <i class="fas fa-hourglass-half"></i>
+                </span>
+                <div>
+                    <h2 id="distUnresolvedTitle">Unresolved assets remain</h2>
+                    <p>Confirm before proceeding with distribution.</p>
+                </div>
+            </div>
+            <button type="button" class="cs-dist-email-close" data-dist-unresolved-cancel aria-label="Close dialog">
+                <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div class="cs-case-close-body" id="distUnresolvedDescription">
+            <p data-dist-unresolved-modal-lead></p>
+            <p>After distribution is confirmed, unresolved assets can no longer be addressed through this workflow. You may review them on the <strong>Unresolved</strong> tab before continuing.</p>
+        </div>
+        <div class="cs-dist-email-actions">
+            <button type="button" class="cs-btn-secondary" data-dist-unresolved-cancel>Review unresolved</button>
+            <button type="button" class="cs-btn-primary" data-dist-unresolved-proceed>
+                <i class="fas fa-check" aria-hidden="true"></i>
+                Confirm division anyway
+            </button>
+        </div>
+    </div>
+</div>
+@endif
 
 <div class="cs-dist-email-modal" data-dist-email-modal hidden>
     <div class="cs-dist-email-backdrop" data-dist-email-close></div>
