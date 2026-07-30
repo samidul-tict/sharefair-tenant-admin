@@ -157,6 +157,7 @@ class CaseController extends Controller
             ->whereNull('parent_comment_id')
             ->count();
         $participatingUserCount = CaseUserMapping::where('case_id', $id)
+            ->active()
             ->where('participate_in_distribution', true)
             ->count();
 
@@ -1293,7 +1294,401 @@ class CaseController extends Controller
             ->join('data_element as role', 'case_user_mapping.role_value', '=', 'role.value')
             ->where('case_user_mapping.case_id', $caseId)
             ->whereIn('case_user_mapping.role_value', ['SAAS_ADM', 'TENANT_A', 'EMP', 'PL', 'DEF', 'DEL', 'LEGAL_RE'])
+            ->where(function ($q) {
+                $q->where('case_user_mapping.is_active', true)->orWhereNull('case_user_mapping.is_active');
+            })
             ->get();
+    }
+
+    private function emptyPartyRow(): array
+    {
+        return [
+            'email' => '',
+            'name' => '',
+            'phone' => '',
+            'user_id' => '',
+            'mapping_id' => '',
+            'distribution_value_cap' => '',
+        ];
+    }
+
+    private function usesPostgresSavepoints(): bool
+    {
+        return DB::connection()->getDriverName() === 'pgsql'
+            && DB::connection()->transactionLevel() > 0;
+    }
+
+    private function createDbSavepoint(string $name): void
+    {
+        if ($this->usesPostgresSavepoints()) {
+            DB::statement('SAVEPOINT ' . $name);
+        }
+    }
+
+    private function rollbackDbSavepoint(string $name): void
+    {
+        if ($this->usesPostgresSavepoints()) {
+            DB::statement('ROLLBACK TO SAVEPOINT ' . $name);
+        }
+    }
+
+    private function releaseDbSavepoint(string $name): void
+    {
+        if ($this->usesPostgresSavepoints()) {
+            DB::statement('RELEASE SAVEPOINT ' . $name);
+        }
+    }
+
+    private function uniqueSavepointName(string $prefix): string
+    {
+        return $prefix . '_' . preg_replace('/[^a-zA-Z0-9_]/', '', uniqid('', true));
+    }
+
+    private function shouldMergeExistingCaseUserMapping(CaseUserMapping $existing, array $attributes): bool
+    {
+        if ($existing->is_active === false) {
+            return true;
+        }
+
+        // Counsel rows always merge onto the existing case mapping for this user.
+        if (array_key_exists('representing_to_user', $attributes)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function deactivateCaseUserMapping(int $caseId, int $mappingId): void
+    {
+        CaseUserMapping::query()
+            ->where('id', $mappingId)
+            ->where('case_id', $caseId)
+            ->update([
+                'is_active' => false,
+                'modified_by' => Auth::id(),
+                'last_modified_date' => now(),
+            ]);
+    }
+
+    private function isEmptyPartyRow(array $row): bool
+    {
+        return empty($row['user_id'])
+            && trim((string) ($row['email'] ?? '')) === ''
+            && trim((string) ($row['name'] ?? '')) === ''
+            && trim((string) ($row['phone'] ?? '')) === '';
+    }
+
+    private function mappingToPartyRow(CaseUserMapping $mapping): array
+    {
+        $user = $mapping->user;
+
+        return [
+            'mapping_id' => $mapping->id,
+            'user_id' => $user?->id ?? '',
+            'name' => $user?->name ?? '',
+            'email' => $user?->email ?? '',
+            'phone' => $user?->phone_number ?? '',
+            'phone_number' => $user?->phone_number ?? '',
+            'role' => $mapping->role_value,
+            'role_id' => $mapping->role_value,
+            'distribution_value_cap' => $mapping->distribution_value_cap,
+        ];
+    }
+
+    /**
+     * @return array{partySlots: array<string, array>, additionalContacts: array<int, array>}
+     */
+    private function organizeContactsForPartyForm(array $oldRows, $caseUsers = null): array
+    {
+        if (!empty($oldRows)) {
+            return $this->organizePartyRowsFromFlat($oldRows);
+        }
+
+        $partySlots = [
+            'client' => $this->emptyPartyRow(),
+            'client_counsel' => $this->emptyPartyRow(),
+            'spouse' => $this->emptyPartyRow(),
+            'spouse_counsel' => $this->emptyPartyRow(),
+        ];
+        $additionalContacts = [];
+
+        if (!$caseUsers || $caseUsers->isEmpty()) {
+            return compact('partySlots', 'additionalContacts');
+        }
+
+        $plMapping = $caseUsers->firstWhere('role_value', 'PL');
+        $defMapping = $caseUsers->firstWhere('role_value', 'DEF');
+
+        if ($plMapping) {
+            $partySlots['client'] = $this->mappingToPartyRow($plMapping);
+        }
+        if ($defMapping) {
+            $partySlots['spouse'] = $this->mappingToPartyRow($defMapping);
+        }
+
+        $plUserId = $plMapping?->user_id;
+        $defUserId = $defMapping?->user_id;
+        $assignedCounselIds = [];
+
+        foreach ($caseUsers->where('role_value', 'LEGAL_RE') as $mapping) {
+            if ($plUserId && (int) $mapping->representing_to_user === (int) $plUserId) {
+                $partySlots['client_counsel'] = array_merge($this->mappingToPartyRow($mapping), [
+                    'represents_party' => 'client',
+                ]);
+                $assignedCounselIds[] = $mapping->id;
+            } elseif ($defUserId && (int) $mapping->representing_to_user === (int) $defUserId) {
+                $partySlots['spouse_counsel'] = array_merge($this->mappingToPartyRow($mapping), [
+                    'represents_party' => 'spouse',
+                ]);
+                $assignedCounselIds[] = $mapping->id;
+            }
+        }
+
+        $fixedIds = array_filter(array_merge(
+            [$plMapping?->id, $defMapping?->id],
+            $assignedCounselIds
+        ));
+
+        $additionalContacts = $caseUsers
+            ->reject(fn ($mapping) => in_array($mapping->id, $fixedIds, true))
+            ->map(function ($mapping) {
+                $row = $this->mappingToPartyRow($mapping);
+                $row['role'] = 'LEGAL_RE';
+                $row['role_id'] = 'LEGAL_RE';
+
+                return $row;
+            })
+            ->values()
+            ->all();
+
+        return compact('partySlots', 'additionalContacts');
+    }
+
+    /**
+     * @return array{partySlots: array<string, array>, additionalContacts: array<int, array>}
+     */
+    private function organizePartyRowsFromFlat(array $rows): array
+    {
+        $partySlots = [
+            'client' => $rows[0] ?? $this->emptyPartyRow(),
+            'client_counsel' => $rows[1] ?? $this->emptyPartyRow(),
+            'spouse' => $rows[2] ?? $this->emptyPartyRow(),
+            'spouse_counsel' => $rows[3] ?? $this->emptyPartyRow(),
+        ];
+        $additionalContacts = [];
+
+        if (isset($rows[0]['role_id']) || isset($rows[0]['role'])) {
+            $partySlots = [
+                'client' => $this->emptyPartyRow(),
+                'client_counsel' => $this->emptyPartyRow(),
+                'spouse' => $this->emptyPartyRow(),
+                'spouse_counsel' => $this->emptyPartyRow(),
+            ];
+
+            foreach ($rows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $role = $row['role_id'] ?? $row['role'] ?? '';
+                if ($role === 'PL') {
+                    $partySlots['client'] = $row;
+                } elseif ($role === 'DEF') {
+                    $partySlots['spouse'] = $row;
+                } elseif ($role === 'LEGAL_RE') {
+                    $represents = $row['represents_party'] ?? null;
+                    if ($represents === 'client' && $this->isEmptyPartyRow($partySlots['client_counsel'])) {
+                        $row['represents_party'] = 'client';
+                        $partySlots['client_counsel'] = $row;
+                    } elseif ($represents === 'spouse' && $this->isEmptyPartyRow($partySlots['spouse_counsel'])) {
+                        $row['represents_party'] = 'spouse';
+                        $partySlots['spouse_counsel'] = $row;
+                    } else {
+                        $additionalContacts[] = $row;
+                    }
+                } else {
+                    $row['role_id'] = 'LEGAL_RE';
+                    $row['role'] = 'LEGAL_RE';
+                    $additionalContacts[] = $row;
+                }
+            }
+        } else {
+            foreach ($rows as $index => $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                if ($index >= 4) {
+                    $row['role_id'] = 'LEGAL_RE';
+                    $row['role'] = 'LEGAL_RE';
+                    $additionalContacts[] = $row;
+                }
+            }
+        }
+
+        return compact('partySlots', 'additionalContacts');
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePartyContactRows(array $rows): array
+    {
+        $normalized = [];
+        foreach ($rows as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $slot = (int) $index;
+            if ($slot === 3 && $this->isEmptyPartyRow($row)) {
+                continue;
+            }
+            if ($slot >= 4) {
+                $row['role_id'] = 'LEGAL_RE';
+                $row['role'] = 'LEGAL_RE';
+            }
+            if ($slot === 1) {
+                $row['represents_party'] = $row['represents_party'] ?? 'client';
+            }
+            if ($slot === 3) {
+                $row['represents_party'] = $row['represents_party'] ?? 'spouse';
+            }
+            $normalized[$slot] = $row;
+        }
+
+        ksort($normalized);
+
+        return $normalized;
+    }
+
+    /**
+     * Resolve plaintiff and defendant user IDs first so counsel rows can link representing_to_user.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array{client: int|null, spouse: int|null}
+     */
+    private function resolvePartyUserIdsFromContactRows(
+        array $rows,
+        string $roleKey,
+        array &$preloaded,
+        ?User $loggedUser,
+        ?CourtCase $case = null
+    ): array {
+        $partyUserIds = ['client' => null, 'spouse' => null];
+
+        foreach ($rows as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $role = $row[$roleKey] ?? null;
+            if ($role === null || $role === '') {
+                if ((int) $index === 0) {
+                    $role = 'PL';
+                } elseif ((int) $index === 2) {
+                    $role = 'DEF';
+                }
+            }
+
+            if (!in_array($role, ['PL', 'DEF'], true)) {
+                continue;
+            }
+
+            if ($case && !empty($row['mapping_id'])) {
+                $mapping = CaseUserMapping::query()
+                    ->where('id', (int) $row['mapping_id'])
+                    ->where('case_id', $case->id)
+                    ->first();
+
+                if ($mapping && in_array($mapping->role_value, ['PL', 'DEF'], true)) {
+                    $userId = (int) $mapping->user_id;
+                    if ($mapping->role_value === 'PL') {
+                        $partyUserIds['client'] = $userId;
+                    }
+                    if ($mapping->role_value === 'DEF') {
+                        $partyUserIds['spouse'] = $userId;
+                    }
+                    continue;
+                }
+            }
+
+            $user = $this->findOrCreateContactUser($row, $preloaded, $loggedUser, $roleKey);
+            $userId = (int) $user->id;
+            if ($role === 'PL') {
+                $partyUserIds['client'] = $userId;
+            }
+            if ($role === 'DEF') {
+                $partyUserIds['spouse'] = $userId;
+            }
+        }
+
+        return $partyUserIds;
+    }
+
+    /**
+     * @param  array{client: int|null, spouse: int|null}  $partyUserIds
+     */
+    private function representingToUserForRow(array $row, int $index, array $partyUserIds): ?int
+    {
+        $represents = $row['represents_party'] ?? null;
+        if ($represents === 'client' || ($index === 1 && ($row['role'] ?? $row['role_id'] ?? '') === 'LEGAL_RE')) {
+            return !empty($partyUserIds['client']) ? (int) $partyUserIds['client'] : null;
+        }
+        if ($represents === 'spouse' || ($index === 3 && ($row['role'] ?? $row['role_id'] ?? '') === 'LEGAL_RE')) {
+            return !empty($partyUserIds['spouse']) ? (int) $partyUserIds['spouse'] : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{client: int|null, spouse: int|null}  $partyUserIds
+     * @return array<string, mixed>
+     */
+    private function caseUserMappingAttributesFromRow(
+        array $row,
+        Request $request,
+        string $roleKey,
+        array $partyUserIds,
+        int $index = -1
+    ): array {
+        $role = $row[$roleKey] ?? null;
+        $attributes = [
+            'role_value' => $role,
+            'user_status_value' => 'READY',
+            'participate_in_distribution' => in_array($role, ['PL', 'DEF'], true),
+            'allocated_item_count' => 0,
+            'allocated_value' => 0,
+            'value_difference' => 0,
+            'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, $roleKey),
+            'is_active' => true,
+            'created_by' => Auth::id(),
+            'created_date' => now(),
+            'modified_by' => Auth::id(),
+            'last_modified_date' => now(),
+        ];
+
+        $representingToUser = $this->representingToUserForRow($row, $index, $partyUserIds);
+        if ($representingToUser !== null) {
+            $attributes['representing_to_user'] = $representingToUser;
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Mapping fields safe to apply when updating an existing case_user_mapping row.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function caseUserMappingUpdateAttributes(array $attributes): array
+    {
+        unset($attributes['created_by'], $attributes['created_date']);
+
+        return array_merge($attributes, [
+            'is_active' => true,
+            'modified_by' => Auth::id(),
+            'last_modified_date' => now(),
+        ]);
     }
 
     /**
@@ -1335,14 +1730,22 @@ class CaseController extends Controller
 
     private function resolveContactUser(array $row, array $preloaded): ?User
     {
+        $email = strtolower(trim((string) ($row['email'] ?? '')));
+
         if (!empty($row['user_id'])) {
             $user = $preloaded['by_id']->get((int) $row['user_id']);
+            if ($user) {
+                $userEmail = strtolower(trim((string) $user->email));
+                if ($email !== '' && $userEmail !== $email) {
+                    $user = null;
+                }
+            }
+
             if ($user) {
                 return $user;
             }
         }
 
-        $email = strtolower(trim((string) ($row['email'] ?? '')));
         if ($email === '') {
             return null;
         }
@@ -1352,10 +1755,58 @@ class CaseController extends Controller
             return $user;
         }
 
-        // Fallback in case preload missed a casing variant.
         return User::query()
             ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
             ->first();
+    }
+
+    private function normalizeContactPhone(?string $phone): ?string
+    {
+        if ($phone === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', trim($phone));
+
+        return $digits !== '' ? $digits : null;
+    }
+
+    private function findExistingUserByEmailOrPhone(string $emailKey, ?string $phone): ?User
+    {
+        if ($emailKey !== '') {
+            $user = User::query()
+                ->whereRaw('LOWER(TRIM(email)) = ?', [$emailKey])
+                ->first();
+            if ($user) {
+                return $user;
+            }
+        }
+
+        $phone = $this->normalizeContactPhone($phone);
+        if ($phone !== null && $phone !== '') {
+            return User::query()->where('phone_number', $phone)->first();
+        }
+
+        return null;
+    }
+
+    private function uniqueConstraintContactMessage(\Illuminate\Database\UniqueConstraintViolationException $e): string
+    {
+        $detail = $e->getMessage();
+
+        if (str_contains($detail, 'users_phone_number_key')) {
+            return 'That phone number is already registered to another user. Search for the existing user or enter a different phone number.';
+        }
+
+        if (str_contains($detail, 'users_email_key')) {
+            return 'That email is already registered. Search for the existing user instead of entering duplicate contact details.';
+        }
+
+        if (str_contains($detail, 'uq_case_user_mapping')) {
+            return 'Each person can only be added once per case. Search for the user if they are already listed on this case.';
+        }
+
+        return 'Unable to save contact because a duplicate record was detected.';
     }
 
     /**
@@ -1376,21 +1827,23 @@ class CaseController extends Controller
         }
 
         $emailKey = strtolower($email);
-        $user = User::query()
-            ->whereRaw('LOWER(TRIM(email)) = ?', [$emailKey])
-            ->first();
+        $user = $this->findExistingUserByEmailOrPhone($emailKey, $row['phone'] ?? null);
 
         if ($user) {
             $preloaded['by_id']->put($user->id, $user);
-            $preloaded['by_email']->put($emailKey, $user);
+            $preloaded['by_email']->put(strtolower(trim((string) $user->email)), $user);
+
             return $user;
         }
+
+        $savepoint = $this->uniqueSavepointName('contact_user_create');
+        $this->createDbSavepoint($savepoint);
 
         try {
             $user = User::create([
                 'email' => $email,
                 'name' => $row['name'] ?? '',
-                'phone_number' => $row['phone'] ?? null,
+                'phone_number' => $this->normalizeContactPhone($row['phone'] ?? null),
                 'password' => md5('12345'),
                 'preferred_language' => 'en',
                 'is_active' => true,
@@ -1399,25 +1852,34 @@ class CaseController extends Controller
                 'modified_by' => Auth::id(),
                 'last_modified_date' => now(),
             ]);
+            $this->releaseDbSavepoint($savepoint);
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-            // Race or case-variant email already present — reuse existing user.
-            $user = User::query()
-                ->whereRaw('LOWER(TRIM(email)) = ?', [$emailKey])
-                ->first();
+            $this->rollbackDbSavepoint($savepoint);
+            $user = $this->findExistingUserByEmailOrPhone($emailKey, $row['phone'] ?? null);
             if (!$user) {
-                throw $e;
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'email' => $this->uniqueConstraintContactMessage($e),
+                ]);
             }
             $preloaded['by_id']->put($user->id, $user);
-            $preloaded['by_email']->put($emailKey, $user);
+            $preloaded['by_email']->put(strtolower(trim((string) $user->email)), $user);
+
             return $user;
         }
 
         $roleValue = $row[$roleKey] ?? null;
         $isEndClient = in_array($roleValue, ['PL', 'DEF'], true);
+        $tenantId = $isEndClient ? 1 : ($loggedUser->tenant_id ?? null);
+        if (!$isEndClient && $roleValue !== '' && $tenantId === null) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'users' => 'Unable to assign this role because your account tenant could not be determined.',
+            ]);
+        }
+
         $this->ensureUserRoleMapping(
             $user->id,
             $isEndClient ? 'EC' : (string) $roleValue,
-            $isEndClient ? 1 : ($loggedUser->tenant_id ?? null)
+            $tenantId
         );
 
         $preloaded['by_id']->put($user->id, $user);
@@ -1442,6 +1904,9 @@ class CaseController extends Controller
             return;
         }
 
+        $savepoint = $this->uniqueSavepointName('user_role_mapping');
+        $this->createDbSavepoint($savepoint);
+
         try {
             UserRoleMapping::create([
                 'user_id' => $userId,
@@ -1453,8 +1918,15 @@ class CaseController extends Controller
                 'modified_by' => Auth::id(),
                 'last_modified_date' => now(),
             ]);
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-            // Already mapped — skip.
+            $this->releaseDbSavepoint($savepoint);
+        } catch (\Illuminate\Database\QueryException $e) {
+            $this->rollbackDbSavepoint($savepoint);
+
+            if ($e instanceof \Illuminate\Database\UniqueConstraintViolationException) {
+                return;
+            }
+
+            throw $e;
         }
     }
 
@@ -1463,27 +1935,149 @@ class CaseController extends Controller
      */
     private function createCaseUserMappingIfAbsent(int $caseId, int $userId, array $attributes, array &$mappedUserIds): bool
     {
+        $existing = CaseUserMapping::where('case_id', $caseId)->where('user_id', $userId)->first();
+        if ($existing) {
+            $mappedUserIds[$userId] = true;
+            if ($this->shouldMergeExistingCaseUserMapping($existing, $attributes)) {
+                $existing->update($this->caseUserMappingUpdateAttributes($attributes));
+
+                return true;
+            }
+
+            return false;
+        }
+
         if (isset($mappedUserIds[$userId])) {
             return false;
         }
 
-        if (CaseUserMapping::where('case_id', $caseId)->where('user_id', $userId)->exists()) {
-            $mappedUserIds[$userId] = true;
-            return false;
-        }
+        $savepoint = $this->uniqueSavepointName('case_user_mapping');
+        $this->createDbSavepoint($savepoint);
 
         try {
             CaseUserMapping::create(array_merge([
                 'case_id' => $caseId,
                 'user_id' => $userId,
             ], $attributes));
+            $this->releaseDbSavepoint($savepoint);
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-            $mappedUserIds[$userId] = true;
-            return false;
+            $this->rollbackDbSavepoint($savepoint);
+
+            $existing = CaseUserMapping::where('case_id', $caseId)->where('user_id', $userId)->first();
+            if ($existing) {
+                $mappedUserIds[$userId] = true;
+                $existing->update($this->caseUserMappingUpdateAttributes($attributes));
+
+                return true;
+            }
+
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'users' => $this->uniqueConstraintContactMessage($e),
+            ]);
         }
 
         $mappedUserIds[$userId] = true;
+
         return true;
+    }
+
+    /**
+     * Soft-delete case users removed from the edit form (never Client or Spouse).
+     */
+    private function softDeleteRemovedCaseUsers(CourtCase $case, array $submittedMappingIds): void
+    {
+        $query = CaseUserMapping::query()
+            ->where('case_id', $case->id)
+            ->active()
+            ->whereNotIn('role_value', ['PL', 'DEF']);
+
+        if (count($submittedMappingIds) > 0) {
+            $query->whereNotIn('id', $submittedMappingIds);
+        }
+
+        $query->update([
+            'is_active' => false,
+            'modified_by' => Auth::id(),
+            'last_modified_date' => now(),
+        ]);
+    }
+
+    /**
+     * Client and Spouse cannot be removed once saved on the case.
+     */
+    private function rejectRemovedCaseParties($validator, CourtCase $case, Request $request): void
+    {
+        $submittedMappingIds = collect($request->users ?? [])
+            ->pluck('mapping_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $requiredPartyIds = CaseUserMapping::query()
+            ->where('case_id', $case->id)
+            ->whereIn('role_value', ['PL', 'DEF'])
+            ->active()
+            ->pluck('id')
+            ->all();
+
+        foreach ($requiredPartyIds as $partyId) {
+            if (!in_array($partyId, $submittedMappingIds, true)) {
+                $validator->errors()->add('users', 'Client and Spouse cannot be removed from a case.');
+                return;
+            }
+        }
+    }
+
+    /**
+     * Saved Client and Spouse mappings must keep their party role and identity.
+     */
+    private function rejectChangedCaseParties($validator, CourtCase $case, Request $request): void
+    {
+        if (!is_array($request->users)) {
+            return;
+        }
+
+        $partyMappings = CaseUserMapping::query()
+            ->with('user')
+            ->where('case_id', $case->id)
+            ->whereIn('role_value', ['PL', 'DEF'])
+            ->active()
+            ->get()
+            ->keyBy('id');
+
+        foreach ($request->users as $index => $user) {
+            $mappingId = (int) ($user['mapping_id'] ?? 0);
+            if ($mappingId <= 0 || !$partyMappings->has($mappingId)) {
+                continue;
+            }
+
+            $mapping = $partyMappings->get($mappingId);
+            $expectedRole = $mapping->role_value;
+            if (($user['role'] ?? '') !== $expectedRole) {
+                $validator->errors()->add(
+                    "users.$index.role",
+                    'Client and Spouse roles cannot be changed after they are saved on the case.'
+                );
+            }
+
+            $expectedUserId = (int) $mapping->user_id;
+            $submittedUserId = (int) ($user['user_id'] ?? 0);
+            if ($submittedUserId > 0 && $submittedUserId !== $expectedUserId) {
+                $validator->errors()->add(
+                    "users.$index.name",
+                    'Client and Spouse cannot be changed after they are saved on the case.'
+                );
+                continue;
+            }
+
+            $expectedName = trim((string) ($mapping->user->name ?? ''));
+            if ($expectedName !== '' && trim((string) ($user['name'] ?? '')) !== $expectedName) {
+                $validator->errors()->add(
+                    "users.$index.name",
+                    'Client and Spouse name cannot be changed after they are saved on the case.'
+                );
+            }
+        }
     }
 
     /**
@@ -1607,7 +2201,17 @@ class CaseController extends Controller
 
         $distributionMethods = $this->distributionMethods();
 
-        return view('backend.cases.create', compact('role', 'caseTypes', 'distributionMethods'));
+        $partyForm = $this->organizeContactsForPartyForm(old('contacts', []));
+        $partySlots = $partyForm['partySlots'];
+        $additionalContacts = $partyForm['additionalContacts'];
+
+        return view('backend.cases.create', compact(
+            'role',
+            'caseTypes',
+            'distributionMethods',
+            'partySlots',
+            'additionalContacts'
+        ));
     }
 
     /**
@@ -1625,9 +2229,116 @@ class CaseController extends Controller
     /**
      * Validation rules for distribution fields on create/update.
      */
-    private function distributionFieldRules(): array
+    /**
+     * Map legal hold fields from the request.
+     */
+    private function legalHoldAttributesFromRequest(Request $request): array
     {
         return [
+            'is_legal_hold' => (bool) $request->boolean('is_legal_hold', false),
+            'legal_hold_reason' => $request->filled('legal_hold_reason') ? $request->legal_hold_reason : null,
+            'legal_hold_start_date' => $request->filled('legal_hold_start_date') ? $request->legal_hold_start_date : null,
+            'legal_hold_end_date' => $request->filled('legal_hold_end_date') ? $request->legal_hold_end_date : null,
+        ];
+    }
+
+    /**
+     * Validation rules for case update, respecting status-based field locks.
+     */
+    private function caseUpdateValidationRules(CourtCase $case): array
+    {
+        $locks = $case->caseEditLockFlags();
+
+        if ($locks['legal_hold_only']) {
+            return [
+                'is_legal_hold' => 'nullable|boolean',
+                'legal_hold_reason' => 'nullable|string|max:4000',
+                'legal_hold_start_date' => 'nullable|date',
+                'legal_hold_end_date' => 'nullable|date|after_or_equal:legal_hold_start_date',
+            ];
+        }
+
+        $rules = array_merge([
+            'case_description' => 'nullable|string',
+            'court_name' => 'nullable|string|max:256',
+            'is_legal_hold' => 'nullable|boolean',
+            'legal_hold_reason' => 'nullable|string|max:4000',
+            'legal_hold_start_date' => 'nullable|date',
+            'legal_hold_end_date' => 'nullable|date|after_or_equal:legal_hold_start_date',
+            'users' => 'nullable|array',
+            'users.*.email' => 'nullable|email|max:255',
+            'users.*.name' => 'nullable|string|max:255',
+            'users.*.phone' => 'nullable|string|max:20',
+            'users.*.user_id' => 'nullable|integer|exists:users,id',
+            'users.*.mapping_id' => 'nullable|integer',
+            'users.*.role' => 'required|string|exists:data_element,value|not_in:DEL',
+            'users.*.distribution_value_cap' => 'nullable|numeric|min:0',
+        ], $this->distributionFieldRules($locks));
+
+        if (!$locks['distribution_config']) {
+            $rules['asset_sla_in_days'] = 'required|integer|min:0';
+            $rules['max_number_of_arbitation_per_user'] = 'required|integer|min:0';
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Build persisted case attributes for update, preserving locked fields.
+     */
+    private function buildCaseUpdateAttributes(CourtCase $case, Request $request): array
+    {
+        $base = [
+            'modified_by' => Auth::id(),
+            'last_modified_date' => now(),
+        ];
+
+        $locks = $case->caseEditLockFlags();
+
+        if ($locks['legal_hold_only']) {
+            return array_merge($base, $this->legalHoldAttributesFromRequest($request));
+        }
+
+        $attributes = array_merge($base, $this->legalHoldAttributesFromRequest($request), [
+            'case_description' => $request->case_description,
+            'court_name' => $request->court_name ?: null,
+        ]);
+
+        if (!$locks['distribution_config']) {
+            $attributes['asset_sla_in_days'] = (int) $request->asset_sla_in_days;
+            $attributes['max_number_of_arbitation_per_user'] = (int) $request->max_number_of_arbitation_per_user;
+            $attributes = array_merge($attributes, $this->distributionAttributesFromRequest($request, $locks));
+        } elseif (!$locks['distribution_attempts']) {
+            $attributes['max_number_of_distribution_attempts'] = (int) $request->max_number_of_distribution_attempts;
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Reject attempts to change identity fields that are fixed after case creation.
+     */
+    private function rejectChangedIdentityFields($validator, CourtCase $case, Request $request): void
+    {
+        if ($request->has('case_number') && (string) $request->case_number !== (string) $case->case_number) {
+            $validator->errors()->add('case_number', 'Case number cannot be changed after the case is created.');
+        }
+
+        if ($request->has('case_type') && (string) $request->case_type !== (string) $case->case_type_value) {
+            $validator->errors()->add('case_type', 'Case type cannot be changed after the case is created.');
+        }
+
+        if ($request->has('sla_deadline')) {
+            $existingDeadline = $case->sla_deadline ? $case->sla_deadline->format('Y-m-d') : '';
+            if ((string) $request->sla_deadline !== $existingDeadline) {
+                $validator->errors()->add('sla_deadline', 'SLA deadline cannot be changed after the case is created.');
+            }
+        }
+    }
+
+    private function distributionFieldRules(?array $locks = null): array
+    {
+        $rules = [
             'distribution_sla_in_days' => 'nullable|integer|min:0',
             'max_number_of_distribution_attempts' => 'required|integer|min:0',
             'distribution_method' => [
@@ -1639,6 +2350,17 @@ class CaseController extends Controller
             ],
             'asset_distributed_by' => 'required|in:client,legal_representative',
         ];
+
+        if ($locks !== null) {
+            if ($locks['distribution_config'] ?? false) {
+                unset($rules['distribution_sla_in_days'], $rules['distribution_method'], $rules['asset_distributed_by']);
+            }
+            if ($locks['distribution_attempts'] ?? false) {
+                unset($rules['max_number_of_distribution_attempts']);
+            }
+        }
+
+        return $rules;
     }
 
     /**
@@ -1652,9 +2374,9 @@ class CaseController extends Controller
     /**
      * Map request distribution fields for persistence.
      */
-    private function distributionAttributesFromRequest(Request $request): array
+    private function distributionAttributesFromRequest(Request $request, ?array $locks = null): array
     {
-        return [
+        $attributes = [
             'distribution_sla_in_days' => $request->filled('distribution_sla_in_days')
                 ? (int) $request->distribution_sla_in_days
                 : null,
@@ -1662,6 +2384,17 @@ class CaseController extends Controller
             'distribution_method_value' => $request->distribution_method,
             'distribute_by_client' => $this->distributeByClientFromRequest($request),
         ];
+
+        if ($locks !== null) {
+            if ($locks['distribution_config'] ?? false) {
+                unset($attributes['distribution_sla_in_days'], $attributes['distribution_method_value'], $attributes['distribute_by_client']);
+            }
+            if ($locks['distribution_attempts'] ?? false) {
+                unset($attributes['max_number_of_distribution_attempts']);
+            }
+        }
+
+        return $attributes;
     }
 
     private function distributionValueCapFromRow(Request $request, array $row, string $roleKey): ?float
@@ -1698,29 +2431,31 @@ class CaseController extends Controller
         ], $this->distributionFieldRules()));
 
         $validator->after(function ($validator) use ($request) {
-            if (!is_array($request->contacts)) {
+            $contacts = $this->normalizePartyContactRows($request->input('contacts', []));
+            if ($contacts === []) {
+                $validator->errors()->add('contacts', 'At least one contact is required.');
                 return;
             }
-            foreach ($request->contacts as $i => $c) {
+            foreach ($contacts as $i => $c) {
                 $hasUserId = !empty($c['user_id']);
                 if (!$hasUserId && (empty($c['email']) || empty($c['name']) || empty($c['phone']))) {
                     $validator->errors()->add("contacts.$i.email", 'Either choose an existing employee or enter email, name and phone.');
                 }
             }
-            $plaintiffCount = collect($request->contacts)->where('role_id', 'PL')->count();
-            $defendantCount = collect($request->contacts)->where('role_id', 'DEF')->count();
-            if ($plaintiffCount > 1) {
-                $validator->errors()->add('contacts', 'Only one Plaintiff can be added per case.');
+            $plaintiffCount = collect($contacts)->where('role_id', 'PL')->count();
+            $defendantCount = collect($contacts)->where('role_id', 'DEF')->count();
+            if ($plaintiffCount !== 1) {
+                $validator->errors()->add('contacts', 'Exactly one Client is required.');
             }
-            if ($defendantCount > 1) {
-                $validator->errors()->add('contacts', 'Only one Defendant can be added per case.');
+            if ($defendantCount !== 1) {
+                $validator->errors()->add('contacts', 'Exactly one Spouse is required.');
             }
-            $legalReCount = collect($request->contacts)->where('role_id', 'LEGAL_RE')->count();
+            $legalReCount = collect($contacts)->where('role_id', 'LEGAL_RE')->count();
             if ($legalReCount < 1) {
-                $validator->errors()->add('contacts', 'At least one Legal Representative (LEGAL_RE) is required.');
+                $validator->errors()->add('contacts', 'At least one attorney (Legal Representative) is required for the Client.');
             }
             if (in_array($request->distribution_method, ['DIST_FCP', 'DIST_CAP'], true)) {
-                foreach ($request->contacts as $i => $contact) {
+                foreach ($contacts as $i => $contact) {
                     if (
                         in_array($contact['role_id'] ?? null, ['PL', 'DEF'], true)
                         && (!isset($contact['distribution_value_cap']) || $contact['distribution_value_cap'] === '')
@@ -1735,6 +2470,8 @@ class CaseController extends Controller
         });
 
         $validator->validate();
+
+        $contacts = $this->normalizePartyContactRows($request->input('contacts', []));
 
         // Check loggedin user
         $loggedUser = $this->currentLogUser();
@@ -1759,7 +2496,7 @@ class CaseController extends Controller
             ], $this->distributionAttributesFromRequest($request)));
 
             // Add the case creator as LEGAL_RE only if they did not explicitly add themselves as LEGAL_RE in contacts
-            $creatorAlreadyLegalRe = collect($request->contacts)->contains(function ($c) {
+            $creatorAlreadyLegalRe = collect($contacts)->contains(function ($c) {
                 $isCreator = (isset($c['user_id']) && (int) $c['user_id'] === (int) Auth::id())
                     || (isset($c['email']) && strcasecmp(trim($c['email'] ?? ''), Auth::user()->email ?? '') === 0);
                 return $isCreator && ($c['role_id'] ?? '') === 'LEGAL_RE';
@@ -1784,34 +2521,49 @@ class CaseController extends Controller
                 $mappedUserIds[(int) Auth::id()] = true;
             }
 
-            $preloadedUsers = $this->preloadContactUsers($request->contacts);
+            $preloadedUsers = $this->preloadContactUsers($contacts);
+            $partyUserIds = $this->resolvePartyUserIdsFromContactRows(
+                $contacts,
+                'role_id',
+                $preloadedUsers,
+                $loggedUser
+            );
 
-            foreach ($request->contacts as $row) {
+            foreach ($contacts as $index => $row) {
                 try {
                     $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role_id');
                 } catch (\Illuminate\Validation\ValidationException $e) {
                     continue;
                 }
 
-                $this->createCaseUserMappingIfAbsent((int) $case->id, (int) $user->id, [
-                    'role_value' => $row['role_id'],
-                    'user_status_value' => 'READY',
-                    'participate_in_distribution' => in_array($row['role_id'], ['PL', 'DEF'], true),
-                    'allocated_item_count' => 0,
-                    'allocated_value' => 0,
-                    'value_difference' => 0,
-                    'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role_id'),
-                    'is_active' => true,
-                    'created_by' => Auth::id(),
-                    'created_date' => now(),
-                    'modified_by' => Auth::id(),
-                    'last_modified_date' => now(),
-                ], $mappedUserIds);
+                $userId = (int) $user->id;
+                if (($row['role_id'] ?? '') === 'PL') {
+                    $partyUserIds['client'] = $userId;
+                }
+                if (($row['role_id'] ?? '') === 'DEF') {
+                    $partyUserIds['spouse'] = $userId;
+                }
+
+                $this->createCaseUserMappingIfAbsent(
+                    (int) $case->id,
+                    $userId,
+                    $this->caseUserMappingAttributesFromRow($row, $request, 'role_id', $partyUserIds, (int) $index),
+                    $mappedUserIds
+                );
             }
 
             DB::commit();
             return redirect()->route('admin.cases.index')->with('success', 'Case created successfully');
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            throw $e;
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            DB::rollBack();
+
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'users' => $this->uniqueConstraintContactMessage($e),
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->with('error', $e->getMessage())->withInput();
@@ -1828,7 +2580,8 @@ class CaseController extends Controller
         // load existing mapped users
         $caseUsers = CaseUserMapping::with('user')
             ->where('case_id', $id)
-            ->whereIn('role_value', ['SAAS_ADM', 'TENANT_A', 'DEF', 'DEL', 'LEGAL_RE', 'PL']) // Assuming 3,4 were these. Or maybe just leave IDs if Role::whereIn is used. But this is CaseUserMapping, which uses role_value (string). So MUST match string values. 3=SAAS_ADM, 4=TENANT_A.
+            ->active()
+            ->whereIn('role_value', ['SAAS_ADM', 'TENANT_A', 'DEF', 'DEL', 'LEGAL_RE', 'PL'])
             ->get();
         
         $caseType = DB::table('data_element')
@@ -1846,7 +2599,22 @@ class CaseController extends Controller
 
         $distributionMethods = $this->distributionMethods();
 
-        return view('backend.cases.edit', compact('case', 'caseUsers', 'role', 'caseType', 'distributionMethods'));
+        $caseEditLocks = $case->caseEditLockFlags();
+
+        $partyForm = $this->organizeContactsForPartyForm(old('users', []), $caseUsers);
+        $partySlots = $partyForm['partySlots'];
+        $additionalContacts = $partyForm['additionalContacts'];
+
+        return view('backend.cases.edit', compact(
+            'case',
+            'caseUsers',
+            'role',
+            'caseType',
+            'distributionMethods',
+            'caseEditLocks',
+            'partySlots',
+            'additionalContacts'
+        ));
     }
 
 
@@ -1855,35 +2623,32 @@ class CaseController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), array_merge([
-            'case_number' => 'required|unique:cases,case_number,' . $id,
-            'case_type' => 'required|max:255',
-            'case_description' => 'nullable|string',
-            'court_name' => 'nullable|string|max:256',
-            'sla_deadline' => 'required|date',
-            'asset_sla_in_days' => 'required|integer|min:0',
-            'max_number_of_arbitation_per_user' => 'required|integer|min:0',
+        $case = $this->findAccessibleCase($id);
+        $locks = $case->caseEditLockFlags();
 
-            'is_legal_hold' => 'nullable|boolean',
-            'legal_hold_reason' => 'nullable|string|max:4000',
-            'legal_hold_start_date' => 'nullable|date',
-            'legal_hold_end_date' => 'nullable|date|after_or_equal:legal_hold_start_date',
+        $validator = \Illuminate\Support\Facades\Validator::make(
+            $request->all(),
+            $this->caseUpdateValidationRules($case)
+        );
 
-            'users' => 'nullable|array',
-            'users.*.email' => 'nullable|email|max:255',
-            'users.*.name'  => 'nullable|string|max:255',
-            'users.*.phone' => 'nullable|string|max:20',
-            'users.*.user_id' => 'nullable|integer|exists:users,id',
-            'users.*.mapping_id' => 'nullable|integer',
-            'users.*.role' => 'required|string|exists:data_element,value|not_in:DEL',
-            'users.*.distribution_value_cap' => 'nullable|numeric|min:0',
-        ], $this->distributionFieldRules()));
+        $validator->after(function ($validator) use ($request, $locks, $case) {
+            if ($locks['legal_hold_only']) {
+                return;
+            }
 
-        $validator->after(function ($validator) use ($request) {
+            if ($locks['identity']) {
+                $this->rejectChangedIdentityFields($validator, $case, $request);
+            }
+
+            $this->rejectRemovedCaseParties($validator, $case, $request);
+            $this->rejectChangedCaseParties($validator, $case, $request);
+
             if (!is_array($request->users)) {
                 return;
             }
-            foreach ($request->users as $i => $user) {
+
+            $users = $this->normalizePartyContactRows($request->input('users', []));
+            foreach ($users as $i => $user) {
                 $hasUserId = !empty($user['user_id']);
                 if (!$hasUserId && (empty($user['email']) || empty($user['name']) || empty($user['phone']))) {
                     $validator->errors()->add(
@@ -1893,20 +2658,23 @@ class CaseController extends Controller
                 }
             }
 
-            $plaintiffCount = collect($request->users)->where('role', 'PL')->count();
-            $defendantCount = collect($request->users)->where('role', 'DEF')->count();
-            if ($plaintiffCount > 1) {
-                $validator->errors()->add('users', 'Only one Plaintiff can be added per case.');
+            $plaintiffCount = collect($users)->where('role', 'PL')->count();
+            $defendantCount = collect($users)->where('role', 'DEF')->count();
+            if ($plaintiffCount !== 1) {
+                $validator->errors()->add('users', 'Exactly one Client is required.');
             }
-            if ($defendantCount > 1) {
-                $validator->errors()->add('users', 'Only one Defendant can be added per case.');
+            if ($defendantCount !== 1) {
+                $validator->errors()->add('users', 'Exactly one Spouse is required.');
             }
-            $legalReCount = collect($request->users)->where('role', 'LEGAL_RE')->count();
+            $legalReCount = collect($users)->where('role', 'LEGAL_RE')->count();
             if ($legalReCount < 1) {
-                $validator->errors()->add('users', 'At least one Legal Representative (LEGAL_RE) is required.');
+                $validator->errors()->add('users', 'At least one attorney (Legal Representative) is required for the Client.');
             }
-            if (in_array($request->distribution_method, ['DIST_FCP', 'DIST_CAP'], true)) {
-                foreach ($request->users as $i => $user) {
+            if (
+                !$locks['distribution_config']
+                && in_array($request->distribution_method, ['DIST_FCP', 'DIST_CAP'], true)
+            ) {
+                foreach ($users as $i => $user) {
                     if (
                         in_array($user['role'] ?? null, ['PL', 'DEF'], true)
                         && (!isset($user['distribution_value_cap']) || $user['distribution_value_cap'] === '')
@@ -1923,47 +2691,31 @@ class CaseController extends Controller
         $validator->validate();
 
         $loggedUser = $this->currentLogUser();
+        $users = $this->normalizePartyContactRows($request->input('users', []));
 
         try {
             DB::beginTransaction();
 
             /** Update Parent Case */
-            $case = $this->findAccessibleCase($id);
-            $case->update(array_merge([
-                'case_number' => $request->case_number,
-                'case_type_value' => $request->case_type,
-                'case_description' => $request->case_description,
-                'court_name' => $request->court_name ?: null,
-                'sla_deadline' => $request->sla_deadline,
-                'asset_sla_in_days' => (int) $request->asset_sla_in_days,
-                'max_number_of_arbitation_per_user' => (int) $request->max_number_of_arbitation_per_user,
-                'is_active' => $request->has('is_active') ? (bool) $request->boolean('is_active') : $case->is_active,
-                'is_legal_hold' => (bool) $request->boolean('is_legal_hold', false),
-                'legal_hold_reason' => $request->filled('legal_hold_reason') ? $request->legal_hold_reason : null,
-                'legal_hold_start_date' => $request->filled('legal_hold_start_date') ? $request->legal_hold_start_date : null,
-                'legal_hold_end_date' => $request->filled('legal_hold_end_date') ? $request->legal_hold_end_date : null,
-                'modified_by' => Auth::id(),
-                'last_modified_date' => now(),
-            ], $this->distributionAttributesFromRequest($request)));
+            $case->update($this->buildCaseUpdateAttributes($case, $request));
+
+            if ($locks['legal_hold_only']) {
+                DB::commit();
+                return redirect()->route('admin.cases.index')->with('success', 'Case updated successfully');
+            }
 
             /** Get submitted mapping IDs */
-            $submittedMappingIds = collect($request->users)
+            $submittedMappingIds = collect($users)
                 ->pluck('mapping_id')
                 ->filter()
                 ->map(fn($id) => (int) $id)
                 ->toArray();
 
-            /** Delete removed rows (never delete Plaintiff or Defendant) */
-            CaseUserMapping::where('case_id', $case->id)
-                ->whereNotIn('role_value', ['PL', 'DEF'])
-                ->when(
-                    count($submittedMappingIds) > 0,
-                    fn($q) => $q->whereNotIn('id', $submittedMappingIds)
-                )
-                ->delete();
+            /** Soft-delete removed rows (never Client or Spouse) */
+            $this->softDeleteRemovedCaseUsers($case, $submittedMappingIds);
 
             $preloadedUsers = $this->preloadContactUsers(
-                collect($request->users)->map(fn ($row) => [
+                collect($users)->map(fn ($row) => [
                     'user_id' => $row['user_id'] ?? null,
                     'email' => $row['email'] ?? null,
                 ])->all()
@@ -1975,9 +2727,42 @@ class CaseController extends Controller
                 ->flip()
                 ->all();
 
+            $partyUserIds = $this->resolvePartyUserIdsFromContactRows(
+                $users,
+                'role',
+                $preloadedUsers,
+                $loggedUser,
+                $case
+            );
+
             /** Save / Update Users & Mappings */
-            foreach ($request->users as $rowIndex => $row) {
+            foreach ($users as $rowIndex => $row) {
                 $mappingId = $row['mapping_id'] ?? null;
+
+                if ($mappingId) {
+                    $existingMapping = CaseUserMapping::query()
+                        ->where('id', $mappingId)
+                        ->where('case_id', $case->id)
+                        ->first();
+
+                    if ($existingMapping && in_array($existingMapping->role_value, ['PL', 'DEF'], true)) {
+                        if ($existingMapping->role_value === 'PL') {
+                            $partyUserIds['client'] = (int) $existingMapping->user_id;
+                        }
+                        if ($existingMapping->role_value === 'DEF') {
+                            $partyUserIds['spouse'] = (int) $existingMapping->user_id;
+                        }
+
+                        CaseUserMapping::where('id', $mappingId)->update([
+                            'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role'),
+                            'is_active' => true,
+                            'modified_by' => Auth::id(),
+                            'last_modified_date' => now(),
+                        ]);
+                        $mappedUserIds[(int) $existingMapping->user_id] = true;
+                        continue;
+                    }
+                }
 
                 try {
                     $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role');
@@ -1988,46 +2773,45 @@ class CaseController extends Controller
                 }
 
                 $userId = (int) $user->id;
-                $participateInDistribution = in_array($row['role'], ['PL', 'DEF'], true);
+                if (($row['role'] ?? '') === 'PL') {
+                    $partyUserIds['client'] = $userId;
+                }
+                if (($row['role'] ?? '') === 'DEF') {
+                    $partyUserIds['spouse'] = $userId;
+                }
+
+                $mappingAttributes = $this->caseUserMappingAttributesFromRow(
+                    $row,
+                    $request,
+                    'role',
+                    $partyUserIds,
+                    (int) $rowIndex
+                );
 
                 /** Update existing mapping */
                 if ($mappingId) {
-                    // If this user is already tied to a different mapping on the case, skip the user_id change.
-                    $conflict = CaseUserMapping::where('case_id', $case->id)
+                    $conflictMapping = CaseUserMapping::where('case_id', $case->id)
                         ->where('user_id', $userId)
                         ->where('id', '!=', $mappingId)
-                        ->exists();
-                    if ($conflict) {
+                        ->first();
+
+                    if ($conflictMapping) {
+                        // User is already on the case — merge counsel onto their existing mapping.
+                        $conflictMapping->update($this->caseUserMappingUpdateAttributes($mappingAttributes));
+                        $this->deactivateCaseUserMapping((int) $case->id, (int) $mappingId);
                         $mappedUserIds[$userId] = true;
                         continue;
                     }
 
-                    CaseUserMapping::where('id', $mappingId)->update([
-                        'user_id' => $user->id,
-                        'role_value' => $row['role'],
-                        'participate_in_distribution' => $participateInDistribution,
-                        'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role'),
-                        'modified_by' => Auth::id(),
-                        'last_modified_date' => now(),
-                    ]);
+                    CaseUserMapping::where('id', $mappingId)->update(array_merge(
+                        $this->caseUserMappingUpdateAttributes($mappingAttributes),
+                        ['user_id' => $user->id]
+                    ));
                     $mappedUserIds[$userId] = true;
                     continue;
                 }
 
-                $this->createCaseUserMappingIfAbsent((int) $case->id, $userId, [
-                    'role_value' => $row['role'],
-                    'user_status_value' => 'READY',
-                    'participate_in_distribution' => $participateInDistribution,
-                    'allocated_item_count' => 0,
-                    'allocated_value' => 0,
-                    'value_difference' => 0,
-                    'distribution_value_cap' => $this->distributionValueCapFromRow($request, $row, 'role'),
-                    'is_active' => true,
-                    'created_by' => Auth::id(),
-                    'created_date' => now(),
-                    'modified_by' => Auth::id(),
-                    'last_modified_date' => now(),
-                ], $mappedUserIds);
+                $this->createCaseUserMappingIfAbsent((int) $case->id, $userId, $mappingAttributes, $mappedUserIds);
             }
 
             DB::commit();
@@ -2038,11 +2822,10 @@ class CaseController extends Controller
             throw $e;
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
             DB::rollBack();
-            return back()
-                ->withErrors([
-                    'users' => 'Each person can only be added once per case. Someone you added is already on this case.',
-                ])
-                ->withInput();
+
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'users' => $this->uniqueConstraintContactMessage($e),
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return back()
@@ -2193,9 +2976,21 @@ class CaseController extends Controller
 
         $mapping = CaseUserMapping::where('id', $request->mapping_id)
             ->where('case_id', $id)
+            ->active()
             ->firstOrFail();
 
-        $mapping->delete();
+        if (in_array($mapping->role_value, ['PL', 'DEF'], true)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Client and Spouse cannot be removed from a case.',
+            ], 422);
+        }
+
+        $mapping->update([
+            'is_active' => false,
+            'modified_by' => Auth::id(),
+            'last_modified_date' => now(),
+        ]);
 
         $caseUsers = $this->caseUsersWithDetails((int) $id);
 

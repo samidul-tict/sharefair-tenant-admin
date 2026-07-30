@@ -107,6 +107,65 @@ class CourtCase extends Model
         'RES_COMP',
     ];
 
+    /** Statuses at or after pending distribution (PEND_DIS). */
+    public const STATUSES_AT_OR_AFTER_PEND_DIS = [
+        'PEND_DIS',
+        'PEND_APP',
+        'PEND_CLS',
+        'RES_COMP',
+    ];
+
+    /** Statuses at or after pending approval (PEND_APP). */
+    public const STATUSES_AT_OR_AFTER_PEND_APP = [
+        'PEND_APP',
+        'PEND_CLS',
+        'RES_COMP',
+    ];
+
+    /**
+     * Whether the case has reached pending distribution or a later stage.
+     */
+    public function isAtOrPastPendingDistribution(): bool
+    {
+        return in_array($this->case_status_value, self::STATUSES_AT_OR_AFTER_PEND_DIS, true);
+    }
+
+    /**
+     * Whether the case has reached pending approval or a later stage.
+     */
+    public function isAtOrPastPendingApproval(): bool
+    {
+        return in_array($this->case_status_value, self::STATUSES_AT_OR_AFTER_PEND_APP, true);
+    }
+
+    /**
+     * Whether the case is closed (resolved complete).
+     */
+    public function isResolvedCompleted(): bool
+    {
+        return $this->case_status_value === 'RES_COMP';
+    }
+
+    /**
+     * Field-lock flags for the case edit form and update handler.
+     *
+     * @return array{
+     *     identity: bool,
+     *     distribution_config: bool,
+     *     distribution_attempts: bool,
+     *     legal_hold_only: bool,
+     * }
+     */
+    public function caseEditLockFlags(): array
+    {
+        return [
+            'identity' => true,
+            'distribution_config' => $this->isAtOrPastPendingDistribution(),
+            'distribution_attempts' => $this->isAtOrPastPendingApproval(),
+            'legal_hold_only' => $this->isResolvedCompleted(),
+        ];
+    }
+
     /**
      * Whether the distribution summary page should be available for this case.
      */

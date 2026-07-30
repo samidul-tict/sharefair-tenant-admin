@@ -29,6 +29,22 @@
         @endif
 
         <div class="cc-form-container">
+            @php
+                $lockDistributionConfig = $caseEditLocks['distribution_config'] ?? false;
+                $lockDistributionAttempts = $caseEditLocks['distribution_attempts'] ?? false;
+                $legalHoldOnly = $caseEditLocks['legal_hold_only'] ?? false;
+            @endphp
+
+            @if($legalHoldOnly)
+                <div class="cc-alert cc-alert-info cc-edit-lock-notice" role="status">
+                    This case is closed. Only the Legal Hold section can be edited.
+                </div>
+            @elseif($lockDistributionConfig || $lockDistributionAttempts)
+                <div class="cc-alert cc-alert-info cc-edit-lock-notice" role="status">
+                    Some case settings are locked based on the current case status and cannot be changed.
+                </div>
+            @endif
+
             <div class="cc-required-notice" role="status">
                 Fields marked with an asterisk are required
             </div>
@@ -43,7 +59,8 @@
                             Case Number
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="text" id="case_number" name="case_number" value="{{ old('case_number', $case->case_number) }}" required readonly aria-readonly="true" class="@error('case_number') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_number') ? 'true' : 'false' }}" @error('case_number') aria-describedby="case_number-error" @enderror>
+                        <input type="text" id="case_number" value="{{ old('case_number', $case->case_number) }}" disabled aria-disabled="true" aria-readonly="true" class="cc-field-locked @error('case_number') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_number') ? 'true' : 'false' }}" @error('case_number') aria-describedby="case_number-locked-hint case_number-error" @enderror>
+                        <p id="case_number-locked-hint" class="cc-section-hint cc-field-hint">Cannot be changed after the case is created.</p>
                         @error('case_number')
                             <div id="case_number-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
@@ -53,19 +70,20 @@
                             Case Type
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <select id="case_type" name="case_type" required aria-required="true" class="@error('case_type') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_type') ? 'true' : 'false' }}" @error('case_type') aria-describedby="case_type-error" @enderror>
+                        <select id="case_type" required aria-required="true" disabled aria-disabled="true" class="cc-field-locked @error('case_type') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_type') ? 'true' : 'false' }}" @error('case_type') aria-describedby="case_type-locked-hint case_type-error" @enderror>
                             <option value="">Select Case Type</option>
                             @foreach ($caseType as $item)
                                 <option value="{{ $item->value }}" {{ old('case_type', $case->case_type_value) == $item->value ? 'selected' : '' }}>{{ $item->name }}</option>
                             @endforeach
                         </select>
+                        <p id="case_type-locked-hint" class="cc-section-hint cc-field-hint">Cannot be changed after the case is created.</p>
                         @error('case_type')
                             <div id="case_type-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
                     </div>
                     <div class="cc-form-group">
                         <label for="court_name">Court Name</label>
-                        <input type="text" id="court_name" name="court_name" value="{{ old('court_name', $case->court_name) }}" placeholder="Enter court name" aria-label="Court name" class="@error('court_name') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('court_name') ? 'true' : 'false' }}" @error('court_name') aria-describedby="court_name-error" @enderror>
+                        <input type="text" id="court_name" name="court_name" value="{{ old('court_name', $case->court_name) }}" placeholder="Enter court name" aria-label="Court name" @if($legalHoldOnly) readonly aria-readonly="true" class="cc-field-locked @error('court_name') cc-is-invalid @enderror" @else class="@error('court_name') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('court_name') ? 'true' : 'false' }}" @error('court_name') aria-describedby="court_name-error" @enderror>
                         @error('court_name')
                             <div id="court_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
@@ -78,7 +96,8 @@
                             SLA Deadline
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="date" id="sla_deadline" name="sla_deadline" value="{{ old('sla_deadline', $case->sla_deadline ? $case->sla_deadline->format('Y-m-d') : '') }}" required aria-required="true" aria-label="SLA deadline date" class="@error('sla_deadline') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('sla_deadline') ? 'true' : 'false' }}" @error('sla_deadline') aria-describedby="sla_deadline-error" @enderror>
+                        <input type="date" id="sla_deadline" value="{{ old('sla_deadline', $case->sla_deadline ? $case->sla_deadline->format('Y-m-d') : '') }}" disabled aria-disabled="true" aria-readonly="true" aria-label="SLA deadline date" class="cc-field-locked @error('sla_deadline') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('sla_deadline') ? 'true' : 'false' }}" @error('sla_deadline') aria-describedby="sla_deadline-locked-hint sla_deadline-error" @enderror>
+                        <p id="sla_deadline-locked-hint" class="cc-section-hint cc-field-hint">Cannot be changed after the case is created.</p>
                         @error('sla_deadline')
                             <div id="sla_deadline-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
@@ -88,7 +107,10 @@
                             Asset SLA (in days)
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="asset_sla_in_days" name="asset_sla_in_days" value="{{ old('asset_sla_in_days', $case->asset_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" required aria-required="true" aria-label="Asset SLA in days" class="@error('asset_sla_in_days') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('asset_sla_in_days') ? 'true' : 'false' }}" @error('asset_sla_in_days') aria-describedby="asset_sla_in_days-error" @enderror>
+                        <input type="number" id="asset_sla_in_days" name="asset_sla_in_days" value="{{ old('asset_sla_in_days', $case->asset_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" required aria-required="true" aria-label="Asset SLA in days" @if($lockDistributionConfig) disabled aria-disabled="true" class="cc-field-locked @error('asset_sla_in_days') cc-is-invalid @enderror" @else class="@error('asset_sla_in_days') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('asset_sla_in_days') ? 'true' : 'false' }}" @error('asset_sla_in_days') aria-describedby="asset_sla_in_days-error" @enderror>
+                        @if($lockDistributionConfig)
+                            <input type="hidden" name="asset_sla_in_days" value="{{ old('asset_sla_in_days', $case->asset_sla_in_days) }}">
+                        @endif
                         @error('asset_sla_in_days')
                             <div id="asset_sla_in_days-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
@@ -98,7 +120,10 @@
                             Max number of arbitration allowed per user
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="max_number_of_arbitation_per_user" name="max_number_of_arbitation_per_user" value="{{ old('max_number_of_arbitation_per_user', $case->max_number_of_arbitation_per_user) }}" placeholder="Enter max arbitration allowed" min="0" step="1" required aria-required="true" aria-label="Max number of arbitration allowed per user" class="@error('max_number_of_arbitation_per_user') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('max_number_of_arbitation_per_user') ? 'true' : 'false' }}" @error('max_number_of_arbitation_per_user') aria-describedby="max_number_of_arbitation_per_user-error" @enderror>
+                        <input type="number" id="max_number_of_arbitation_per_user" name="max_number_of_arbitation_per_user" value="{{ old('max_number_of_arbitation_per_user', $case->max_number_of_arbitation_per_user) }}" placeholder="Enter max arbitration allowed" min="0" step="1" required aria-required="true" aria-label="Max number of arbitration allowed per user" @if($lockDistributionConfig) disabled aria-disabled="true" class="cc-field-locked @error('max_number_of_arbitation_per_user') cc-is-invalid @enderror" @else class="@error('max_number_of_arbitation_per_user') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('max_number_of_arbitation_per_user') ? 'true' : 'false' }}" @error('max_number_of_arbitation_per_user') aria-describedby="max_number_of_arbitation_per_user-error" @enderror>
+                        @if($lockDistributionConfig)
+                            <input type="hidden" name="max_number_of_arbitation_per_user" value="{{ old('max_number_of_arbitation_per_user', $case->max_number_of_arbitation_per_user) }}">
+                        @endif
                         @error('max_number_of_arbitation_per_user')
                             <div id="max_number_of_arbitation_per_user-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
@@ -108,7 +133,10 @@
                 <div class="cc-form-row">
                     <div class="cc-form-group">
                         <label for="distribution_sla_in_days">Distribution SLA (in days)</label>
-                        <input type="number" id="distribution_sla_in_days" name="distribution_sla_in_days" value="{{ old('distribution_sla_in_days', $case->distribution_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" inputmode="numeric" aria-describedby="distribution_sla_in_days-desc{{ $errors->has('distribution_sla_in_days') ? ' distribution_sla_in_days-error' : '' }}" aria-label="Distribution SLA in days" class="@error('distribution_sla_in_days') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('distribution_sla_in_days') ? 'true' : 'false' }}">
+                        <input type="number" id="distribution_sla_in_days" name="distribution_sla_in_days" value="{{ old('distribution_sla_in_days', $case->distribution_sla_in_days) }}" placeholder="Enter number of days" min="0" step="1" inputmode="numeric" aria-describedby="distribution_sla_in_days-desc{{ $errors->has('distribution_sla_in_days') ? ' distribution_sla_in_days-error' : '' }}" aria-label="Distribution SLA in days" @if($lockDistributionConfig) disabled aria-disabled="true" class="cc-field-locked @error('distribution_sla_in_days') cc-is-invalid @enderror" @else class="@error('distribution_sla_in_days') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('distribution_sla_in_days') ? 'true' : 'false' }}">
+                        @if($lockDistributionConfig)
+                            <input type="hidden" name="distribution_sla_in_days" value="{{ old('distribution_sla_in_days', $case->distribution_sla_in_days) }}">
+                        @endif
                         <span id="distribution_sla_in_days-desc" class="sr-only">Optional.</span>
                         @error('distribution_sla_in_days')
                             <div id="distribution_sla_in_days-error" class="cc-field-error" role="alert">{{ $message }}</div>
@@ -119,7 +147,10 @@
                             Max number of distribution attempts
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <input type="number" id="max_number_of_distribution_attempts" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', $case->max_number_of_distribution_attempts) }}" placeholder="Enter max distribution attempts" min="0" step="1" inputmode="numeric" required aria-required="true" aria-label="Max number of distribution attempts" class="@error('max_number_of_distribution_attempts') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('max_number_of_distribution_attempts') ? 'true' : 'false' }}" @error('max_number_of_distribution_attempts') aria-describedby="max_number_of_distribution_attempts-error" @enderror>
+                        <input type="number" id="max_number_of_distribution_attempts" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', $case->max_number_of_distribution_attempts) }}" placeholder="Enter max distribution attempts" min="0" step="1" inputmode="numeric" required aria-required="true" aria-label="Max number of distribution attempts" @if($lockDistributionAttempts) disabled aria-disabled="true" class="cc-field-locked @error('max_number_of_distribution_attempts') cc-is-invalid @enderror" @else class="@error('max_number_of_distribution_attempts') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('max_number_of_distribution_attempts') ? 'true' : 'false' }}" @error('max_number_of_distribution_attempts') aria-describedby="max_number_of_distribution_attempts-error" @enderror>
+                        @if($lockDistributionAttempts)
+                            <input type="hidden" name="max_number_of_distribution_attempts" value="{{ old('max_number_of_distribution_attempts', $case->max_number_of_distribution_attempts) }}">
+                        @endif
                         @error('max_number_of_distribution_attempts')
                             <div id="max_number_of_distribution_attempts-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
@@ -129,12 +160,15 @@
                             Preferred distribution method
                             <span class="cc-required-asterisk" aria-hidden="true">*</span>
                         </label>
-                        <select id="distribution_method" name="distribution_method" required aria-required="true" aria-label="Preferred distribution method" aria-describedby="distribution_method_helper{{ $errors->has('distribution_method') ? ' distribution_method-error' : '' }}" class="@error('distribution_method') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('distribution_method') ? 'true' : 'false' }}">
+                        <select id="distribution_method" name="distribution_method" required aria-required="true" aria-label="Preferred distribution method" aria-describedby="distribution_method_helper{{ $errors->has('distribution_method') ? ' distribution_method-error' : '' }}" @if($lockDistributionConfig) disabled aria-disabled="true" class="cc-field-locked @error('distribution_method') cc-is-invalid @enderror" @else class="@error('distribution_method') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('distribution_method') ? 'true' : 'false' }}">
                             <option value="">Select distribution method</option>
                             @foreach ($distributionMethods as $method)
                                 <option value="{{ $method->value }}" data-helper-text="{{ e($method->helper_text ?? '') }}" {{ old('distribution_method', $case->distribution_method_value) == $method->value ? 'selected' : '' }}>{{ $method->name }}</option>
                             @endforeach
                         </select>
+                        @if($lockDistributionConfig)
+                            <input type="hidden" name="distribution_method" value="{{ old('distribution_method', $case->distribution_method_value) }}">
+                        @endif
                         <p id="distribution_method_helper" class="cc-section-hint cc-field-hint" role="status" aria-live="polite" aria-hidden="true"></p>
                         @error('distribution_method')
                             <div id="distribution_method-error" class="cc-field-error" role="alert">{{ $message }}</div>
@@ -154,14 +188,17 @@
                             @endphp
                             <div class="cc-radio-group" role="radiogroup" aria-label="Asset will be distributed by" aria-invalid="{{ $errors->has('asset_distributed_by') ? 'true' : 'false' }}" @error('asset_distributed_by') aria-describedby="asset_distributed_by-error" @enderror>
                                 <label class="cc-radio-label">
-                                    <input type="radio" name="asset_distributed_by" value="client" {{ $assetDistributedBy === 'client' ? 'checked' : '' }} required aria-required="true">
+                                    <input type="radio" name="asset_distributed_by" value="client" {{ $assetDistributedBy === 'client' ? 'checked' : '' }} required aria-required="true" @if($lockDistributionConfig) disabled aria-disabled="true" @endif>
                                     Client
                                 </label>
                                 <label class="cc-radio-label">
-                                    <input type="radio" name="asset_distributed_by" value="legal_representative" {{ $assetDistributedBy === 'legal_representative' ? 'checked' : '' }} required aria-required="true">
+                                    <input type="radio" name="asset_distributed_by" value="legal_representative" {{ $assetDistributedBy === 'legal_representative' ? 'checked' : '' }} required aria-required="true" @if($lockDistributionConfig) disabled aria-disabled="true" @endif>
                                     Legal Representative
                                 </label>
                             </div>
+                            @if($lockDistributionConfig)
+                                <input type="hidden" name="asset_distributed_by" value="{{ $assetDistributedBy }}">
+                            @endif
                             @error('asset_distributed_by')
                                 <div id="asset_distributed_by-error" class="cc-field-error" role="alert">{{ $message }}</div>
                             @enderror
@@ -171,14 +208,13 @@
 
                 <div class="cc-form-group cc-form-group-full">
                     <label for="case_description">Case Description</label>
-                    <textarea id="case_description" name="case_description" placeholder="Enter detailed case description..." aria-describedby="case_description-desc{{ $errors->has('case_description') ? ' case_description-error' : '' }}" class="@error('case_description') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_description') ? 'true' : 'false' }}">{{ old('case_description', $case->case_description) }}</textarea>
+                    <textarea id="case_description" name="case_description" placeholder="Enter detailed case description..." aria-describedby="case_description-desc{{ $errors->has('case_description') ? ' case_description-error' : '' }}" @if($legalHoldOnly) readonly aria-readonly="true" class="cc-field-locked @error('case_description') cc-is-invalid @enderror" @else class="@error('case_description') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('case_description') ? 'true' : 'false' }}">{{ old('case_description', $case->case_description) }}</textarea>
                     <span id="case_description-desc" class="sr-only">Optional description for the case.</span>
                     @error('case_description')
                         <div id="case_description-error" class="cc-field-error" role="alert">{{ $message }}</div>
                     @enderror
                 </div>
 
-                <div class="cc-section-divider" aria-hidden="true"></div>
                 <span class="cc-section-title">Legal Hold</span>
                 <p class="cc-section-hint" id="legal-hold-desc">Enable legal hold and provide reason and date range.</p>
 
@@ -221,158 +257,18 @@
                     </div>
                 </div>
 
-                <div class="cc-section-divider" aria-hidden="true"></div>
-                <div class="cc-section-error-wrap{{ $errors->has('users') ? ' cc-has-error' : '' }}">
-                    <span class="cc-section-title">Case Users</span>
-                    <p class="cc-section-hint" id="case-users-desc">Add or remove users. Search for an existing user by name or email, or enter details below. Only one Plaintiff and one Defendant allowed per case.</p>
-                    @error('users')
-                        <div id="users-error" class="cc-section-error" role="alert">{{ $message }}</div>
-                    @enderror
-                </div>
-
-                <div id="usersWrapper" data-search-url="{{ url(route('admin.users.search')) }}">
-                    @php
-                        $rows = old('users', []);
-                    @endphp
-                    @if(count($rows) > 0)
-                        @foreach($rows as $i => $r)
-                            <div class="cc-contact-row user-row" data-row-index="{{ $i }}">
-                                <div class="cc-form-row">
-                                    <input type="hidden" name="users[{{ $i }}][mapping_id]" value="{{ $r['mapping_id'] ?? '' }}">
-                                    <div class="cc-form-group cc-user-search-cell">
-                                        <label for="users_{{ $i }}_user_search">Search user</label>
-                                        <div class="cc-typeahead-wrap">
-                                            <input type="text" id="users_{{ $i }}_user_search" class="cc-user-search-input" data-row-index="{{ $i }}" placeholder="Type name or email..." value="{{ !empty($r['user_id']) && isset($r['name']) ? ($r['name'] ?? '') . ' (' . ($r['email'] ?? '') . ')' : '' }}" autocomplete="off" aria-label="Search user by name or email">
-                                            <div class="cc-typeahead-results" id="users_{{ $i }}_results" role="listbox" aria-hidden="true"></div>
-                                        </div>
-                                        <input type="hidden" name="users[{{ $i }}][user_id]" value="{{ $r['user_id'] ?? '' }}" class="cc-user-id-input">
-                                    </div>
-                                    <div class="cc-form-group">
-                                        <label for="users_{{ $i }}_email">Email <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="email" id="users_{{ $i }}_email" name="users[{{ $i }}][email]" value="{{ $r['email'] ?? '' }}" placeholder="email@example.com" required class="@error("users.$i.email") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.email") ? 'true' : 'false' }}" @error("users.$i.email") aria-describedby="users_{{ $i }}_email-error" @enderror>
-                                        @error("users.$i.email")
-                                            <div id="users_{{ $i }}_email-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group">
-                                        <label for="users_{{ $i }}_name">Name <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="text" id="users_{{ $i }}_name" name="users[{{ $i }}][name]" value="{{ $r['name'] ?? '' }}" placeholder="Enter full name" required class="@error("users.$i.name") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.name") ? 'true' : 'false' }}" @error("users.$i.name") aria-describedby="users_{{ $i }}_name-error" @enderror>
-                                        @error("users.$i.name")
-                                            <div id="users_{{ $i }}_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group">
-                                        <label for="users_{{ $i }}_phone">Phone <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="tel" id="users_{{ $i }}_phone" name="users[{{ $i }}][phone]" value="{{ $r['phone'] ?? $r['phone_number'] ?? '' }}" placeholder="(123) 456-7890" required class="@error("users.$i.phone") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.phone") ? 'true' : 'false' }}" @error("users.$i.phone") aria-describedby="users_{{ $i }}_phone-error" @enderror>
-                                        @error("users.$i.phone")
-                                            <div id="users_{{ $i }}_phone-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group cc-contact-role-cell">
-                                        <label for="users_{{ $i }}_role">Role <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <select id="users_{{ $i }}_role" name="users[{{ $i }}][role]" required class="cc-role-select @error("users.$i.role") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.role") ? 'true' : 'false' }}" @error("users.$i.role") aria-describedby="users_{{ $i }}_role-error" @enderror>
-                                            <option value="">Select Role</option>
-                                            @foreach ($role as $item)
-                                                <option value="{{ $item->value }}" {{ (isset($r['role']) && $r['role'] == $item->value) ? 'selected' : '' }}>{{ $item->name }}</option>
-                                            @endforeach
-                                        </select>
-                                        @error("users.$i.role")
-                                            <div id="users_{{ $i }}_role-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
-                                        <label for="users_{{ $i }}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="number" id="users_{{ $i }}_distribution_value_cap" name="users[{{ $i }}][distribution_value_cap]" value="{{ $r['distribution_value_cap'] ?? '' }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap" class="@error("users.$i.distribution_value_cap") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$i.distribution_value_cap") ? 'true' : 'false' }}" @error("users.$i.distribution_value_cap") aria-describedby="users_{{ $i }}_distribution_value_cap-error" @enderror>
-                                        @error("users.$i.distribution_value_cap")
-                                            <div id="users_{{ $i }}_distribution_value_cap-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="{{ $r['role'] ?? '' }}">
-                                        <label class="cc-label-invisible">&nbsp;</label>
-                                        @if((isset($r['role']) && $r['role'] !== 'PL' && $r['role'] !== 'DEF'))
-                                        <button type="button" class="cc-btn-remove-contact removeRowBtn btn-action-icon btn-delete" aria-label="Remove this user" title="Remove this user">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                                        </button>
-                                        @else
-                                        <span class="cc-no-remove-hint" aria-hidden="true">—</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    @else
-                        @foreach($caseUsers as $idx => $mapping)
-                            @php $u = $mapping->user; $selectedRole = old("users.$idx.role", $mapping->role_value ?? ''); $isPlDef = in_array($selectedRole, ['PL', 'DEF']); @endphp
-                            <div class="cc-contact-row user-row" data-row-index="{{ $idx }}">
-                                <div class="cc-form-row">
-                                    <input type="hidden" name="users[{{ $idx }}][mapping_id]" value="{{ $mapping->id }}">
-                                    <div class="cc-form-group cc-user-search-cell">
-                                        <label for="users_{{ $idx }}_user_search">Search user</label>
-                                        <div class="cc-typeahead-wrap">
-                                            <input type="text" id="users_{{ $idx }}_user_search" class="cc-user-search-input" data-row-index="{{ $idx }}" placeholder="Type name or email..." value="{{ $u ? $u->name . ' (' . ($u->email ?? '') . ')' : '' }}" autocomplete="off" aria-label="Search user by name or email">
-                                            <div class="cc-typeahead-results" id="users_{{ $idx }}_results" role="listbox" aria-hidden="true"></div>
-                                        </div>
-                                        <input type="hidden" name="users[{{ $idx }}][user_id]" value="{{ $u ? $u->id : '' }}" class="cc-user-id-input">
-                                    </div>
-                                    <div class="cc-form-group">
-                                        <label for="users_{{ $idx }}_email">Email <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="email" id="users_{{ $idx }}_email" name="users[{{ $idx }}][email]" value="{{ old("users.$idx.email", $u->email ?? '') }}" placeholder="email@example.com" required class="@error("users.$idx.email") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.email") ? 'true' : 'false' }}" @error("users.$idx.email") aria-describedby="users_{{ $idx }}_email-error" @enderror>
-                                        @error("users.$idx.email")
-                                            <div id="users_{{ $idx }}_email-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group">
-                                        <label for="users_{{ $idx }}_name">Name <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="text" id="users_{{ $idx }}_name" name="users[{{ $idx }}][name]" value="{{ old("users.$idx.name", $u->name ?? '') }}" placeholder="Enter full name" required class="@error("users.$idx.name") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.name") ? 'true' : 'false' }}" @error("users.$idx.name") aria-describedby="users_{{ $idx }}_name-error" @enderror>
-                                        @error("users.$idx.name")
-                                            <div id="users_{{ $idx }}_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group">
-                                        <label for="users_{{ $idx }}_phone">Phone <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="tel" id="users_{{ $idx }}_phone" name="users[{{ $idx }}][phone]" value="{{ old("users.$idx.phone", $u->phone_number ?? '') }}" placeholder="(123) 456-7890" required class="@error("users.$idx.phone") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.phone") ? 'true' : 'false' }}" @error("users.$idx.phone") aria-describedby="users_{{ $idx }}_phone-error" @enderror>
-                                        @error("users.$idx.phone")
-                                            <div id="users_{{ $idx }}_phone-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group cc-contact-role-cell">
-                                        <label for="users_{{ $idx }}_role">Role <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <select id="users_{{ $idx }}_role" name="users[{{ $idx }}][role]" required class="cc-role-select @error("users.$idx.role") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.role") ? 'true' : 'false' }}" @error("users.$idx.role") aria-describedby="users_{{ $idx }}_role-error" @enderror>
-                                            <option value="">Select Role</option>
-                                            @foreach ($role as $rl)
-                                                <option value="{{ $rl->value }}" {{ $selectedRole == $rl->value ? 'selected' : '' }}>{{ $rl->name }}</option>
-                                            @endforeach
-                                        </select>
-                                        @error("users.$idx.role")
-                                            <div id="users_{{ $idx }}_role-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
-                                        <label for="users_{{ $idx }}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                                        <input type="number" id="users_{{ $idx }}_distribution_value_cap" name="users[{{ $idx }}][distribution_value_cap]" value="{{ old("users.$idx.distribution_value_cap", $mapping->distribution_value_cap) }}" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap" class="@error("users.$idx.distribution_value_cap") cc-is-invalid @enderror" aria-invalid="{{ $errors->has("users.$idx.distribution_value_cap") ? 'true' : 'false' }}" @error("users.$idx.distribution_value_cap") aria-describedby="users_{{ $idx }}_distribution_value_cap-error" @enderror>
-                                        @error("users.$idx.distribution_value_cap")
-                                            <div id="users_{{ $idx }}_distribution_value_cap-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                    <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="{{ $selectedRole }}">
-                                        <label class="cc-label-invisible">&nbsp;</label>
-                                        @if(!$isPlDef)
-                                        <button type="button" class="cc-btn-remove-contact removeRowBtn btn-action-icon btn-delete" aria-label="Remove this user" title="Remove this user">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                                        </button>
-                                        @else
-                                        <span class="cc-no-remove-hint" aria-hidden="true">—</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    @endif
-                </div>
-
-                <div class="cc-form-actions cc-add-contact-wrap">
-                    <button type="button" id="addUserRowBtn" class="cc-btn cc-btn-outline" aria-describedby="case-users-desc">+ Add User</button>
-                </div>
+                @if(!$legalHoldOnly)
+                @include('backend.cases.partials.case-parties-form', [
+                    'fieldPrefix' => 'users',
+                    'roleField' => 'role',
+                    'partySlots' => $partySlots,
+                    'additionalContacts' => $additionalContacts,
+                    'counselEditable' => !($caseEditLocks['legal_hold_only'] ?? false),
+                    'searchUrl' => url(route('admin.users.search')),
+                    'sectionTitle' => 'Case Parties & Counsel',
+                    'sectionHint' => 'Update each party and their counsel as they would appear in a legal filing. Saved Client and Spouse records cannot be removed or have their identity changed. Counsel for the Client and Spouse may be changed at any time until the case is resolved (RES_COMP). Additional legal representatives can be added or removed.',
+                ])
+                @endif
 
                 <div class="cc-form-actions">
                     <button type="submit" class="cc-btn cc-btn-primary">Save Changes</button>
@@ -386,30 +282,6 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const wrapper = document.getElementById('usersWrapper');
-    const addBtn = document.getElementById('addUserRowBtn');
-    const PL = 'PL';
-    const DEF = 'DEF';
-
-    function updateDistributionValueCaps() {
-        const methodSelect = document.getElementById('distribution_method');
-        const requiresCap = methodSelect && (methodSelect.value === 'DIST_FCP' || methodSelect.value === 'DIST_CAP');
-
-        wrapper.querySelectorAll('.user-row').forEach(function(row) {
-            const roleSelect = row.querySelector('select[name*="[role]"]');
-            const capField = row.querySelector('[data-distribution-cap-field]');
-            const capInput = capField && capField.querySelector('input[name*="[distribution_value_cap]"]');
-            const isClientOrSpouse = roleSelect && (roleSelect.value === PL || roleSelect.value === DEF);
-            const show = Boolean(requiresCap && isClientOrSpouse);
-
-            if (capField) capField.hidden = !show;
-            if (capInput) {
-                capInput.required = show;
-                capInput.setAttribute('aria-required', show ? 'true' : 'false');
-            }
-        });
-    }
-
     function toggleLegalHoldFields() {
         var toggle = document.getElementById('is_legal_hold');
         var fields = document.getElementById('legal_hold_fields');
@@ -436,224 +308,6 @@ document.addEventListener('DOMContentLoaded', function() {
         reasonField.addEventListener('paste', function() { setTimeout(updateLegalHoldReasonCount, 0); });
         updateLegalHoldReasonCount();
     }
-
-    function applyPlaintiffDefendantLimits() {
-        const selects = wrapper.querySelectorAll('select[name*="[role]"]');
-        selects.forEach(sel => {
-            const plOpt = sel.querySelector('option[value="' + PL + '"]');
-            const defOpt = sel.querySelector('option[value="' + DEF + '"]');
-            if (plOpt) plOpt.disabled = false;
-            if (defOpt) defOpt.disabled = false;
-        });
-        let plSelectedIn = null, defSelectedIn = null;
-        selects.forEach(sel => {
-            if (sel.value === PL) plSelectedIn = sel;
-            if (sel.value === DEF) defSelectedIn = sel;
-        });
-        selects.forEach(sel => {
-            const plOpt = sel.querySelector('option[value="' + PL + '"]');
-            const defOpt = sel.querySelector('option[value="' + DEF + '"]');
-            if (plOpt && plSelectedIn && plSelectedIn !== sel) plOpt.disabled = true;
-            if (defOpt && defSelectedIn && defSelectedIn !== sel) defOpt.disabled = true;
-        });
-    }
-
-    function nextIndex() {
-        const rows = wrapper.querySelectorAll('.user-row');
-        if (!rows.length) return 0;
-        let max = -1;
-        rows.forEach(r => {
-            const idx = parseInt(r.getAttribute('data-row-index'), 10);
-            if (!isNaN(idx) && idx > max) max = idx;
-        });
-        return max + 1;
-    }
-
-    applyPlaintiffDefendantLimits();
-    if (typeof updateRemoveButtons === 'function') updateRemoveButtons();
-    updateDistributionValueCaps();
-
-    const distributionMethodSelect = document.getElementById('distribution_method');
-    if (distributionMethodSelect) {
-        distributionMethodSelect.addEventListener('change', updateDistributionValueCaps);
-    }
-
-    wrapper.addEventListener('change', function(e) {
-        if (e.target && e.target.matches('select[name*="[role]"]')) {
-            applyPlaintiffDefendantLimits();
-            updateRemoveButtons();
-            updateDistributionValueCaps();
-        }
-    });
-
-    var searchUrl = wrapper.getAttribute('data-search-url') || '';
-    var typeaheadTimeoutsEdit = {};
-
-    function onEditUserSearchInput(inputEl) {
-        var row = inputEl.closest('.user-row');
-        if (!row) return;
-        var idx = inputEl.getAttribute('data-row-index');
-        var resultsEl = row.querySelector('.cc-typeahead-results');
-        var userIdInput = row.querySelector('.cc-user-id-input');
-        var emailInput = row.querySelector('input[name*="[email]"]');
-        var nameInput = row.querySelector('input[name*="[name]"]');
-        var phoneInput = row.querySelector('input[name*="[phone]"]');
-        var val = (inputEl.value || '').trim();
-
-        if (val.length < 2) {
-            if (resultsEl) { resultsEl.innerHTML = ''; resultsEl.setAttribute('aria-hidden', 'true'); }
-            if (val === '' && userIdInput && userIdInput.value) {
-                userIdInput.value = '';
-                if (emailInput) emailInput.value = '';
-                if (nameInput) nameInput.value = '';
-                if (phoneInput) phoneInput.value = '';
-            }
-            return;
-        }
-
-        clearTimeout(typeaheadTimeoutsEdit[idx]);
-        typeaheadTimeoutsEdit[idx] = setTimeout(function() {
-            fetch(searchUrl + '?q=' + encodeURIComponent(val), { credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function(r) { if (!r.ok) throw new Error('Search failed'); return r.json(); })
-                .then(function(users) {
-                    if (!resultsEl) return;
-                    resultsEl.innerHTML = '';
-                    resultsEl.setAttribute('aria-hidden', 'false');
-                    if (users.length === 0) {
-                        resultsEl.innerHTML = '<div class="cc-typeahead-item cc-typeahead-empty">No users found</div>';
-                        return;
-                    }
-                    users.forEach(function(u) {
-                        var div = document.createElement('div');
-                        div.className = 'cc-typeahead-item';
-                        div.setAttribute('role', 'option');
-                        div.textContent = u.name + ' (' + (u.email || '') + ')';
-                        div.dataset.id = u.id;
-                        div.dataset.name = u.name || '';
-                        div.dataset.email = u.email || '';
-                        div.dataset.phone = (u.phone_number != null) ? u.phone_number : '';
-                        div.addEventListener('click', function() {
-                            if (userIdInput) userIdInput.value = this.dataset.id;
-                            if (emailInput) emailInput.value = this.dataset.email;
-                            if (nameInput) nameInput.value = this.dataset.name;
-                            if (phoneInput) phoneInput.value = this.dataset.phone;
-                            inputEl.value = this.dataset.name + ' (' + this.dataset.email + ')';
-                            resultsEl.innerHTML = '';
-                            resultsEl.setAttribute('aria-hidden', 'true');
-                        });
-                        resultsEl.appendChild(div);
-                    });
-                })
-                .catch(function() {
-                    if (resultsEl) { resultsEl.innerHTML = '<div class="cc-typeahead-item cc-typeahead-empty">Search failed</div>'; resultsEl.setAttribute('aria-hidden', 'false'); }
-                });
-        }, 300);
-    }
-
-    wrapper.addEventListener('input', function(e) {
-        if (e.target && e.target.classList.contains('cc-user-search-input')) onEditUserSearchInput(e.target);
-    });
-    wrapper.addEventListener('focusout', function(e) {
-        if (e.target && e.target.classList.contains('cc-user-search-input')) {
-            var row = e.target.closest('.user-row');
-            var res = row && row.querySelector('.cc-typeahead-results');
-            if (res) setTimeout(function() { res.innerHTML = ''; res.setAttribute('aria-hidden', 'true'); }, 200);
-        }
-    });
-
-    if (addBtn) {
-        addBtn.addEventListener('click', function() {
-            const idx = nextIndex();
-            const row = document.createElement('div');
-            row.className = 'cc-contact-row user-row';
-            row.setAttribute('data-row-index', idx);
-            row.innerHTML = `
-                <div class="cc-form-row">
-                    <input type="hidden" name="users[${idx}][mapping_id]" value="">
-                    <div class="cc-form-group cc-user-search-cell">
-                        <label for="users_${idx}_user_search">Search user</label>
-                        <div class="cc-typeahead-wrap">
-                            <input type="text" id="users_${idx}_user_search" class="cc-user-search-input" data-row-index="${idx}" placeholder="Type name or email..." autocomplete="off" aria-label="Search user by name or email">
-                            <div class="cc-typeahead-results" id="users_${idx}_results" role="listbox" aria-hidden="true"></div>
-                        </div>
-                        <input type="hidden" name="users[${idx}][user_id]" value="" class="cc-user-id-input">
-                    </div>
-                    <div class="cc-form-group">
-                        <label for="users_${idx}_email">Email <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                        <input type="email" id="users_${idx}_email" name="users[${idx}][email]" placeholder="email@example.com" required>
-                    </div>
-                    <div class="cc-form-group">
-                        <label for="users_${idx}_name">Name <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                        <input type="text" id="users_${idx}_name" name="users[${idx}][name]" placeholder="Enter full name" required>
-                    </div>
-                    <div class="cc-form-group">
-                        <label for="users_${idx}_phone">Phone <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                        <input type="tel" id="users_${idx}_phone" name="users[${idx}][phone]" placeholder="(123) 456-7890" required>
-                    </div>
-                    <div class="cc-form-group cc-contact-role-cell">
-                        <label for="users_${idx}_role">Role <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                        <select id="users_${idx}_role" name="users[${idx}][role]" required class="cc-role-select">
-                            <option value="">Select Role</option>
-                            @foreach($role as $rle)
-                                <option value="{{ $rle->value }}">{{ $rle->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="cc-form-group cc-distribution-cap-field" data-distribution-cap-field hidden>
-                        <label for="users_${idx}_distribution_value_cap">Distribution value cap <span class="cc-required-asterisk" aria-hidden="true">*</span></label>
-                        <input type="number" id="users_${idx}_distribution_value_cap" name="users[${idx}][distribution_value_cap]" placeholder="Enter value cap" min="0" step="0.01" inputmode="decimal" aria-label="Distribution value cap">
-                    </div>
-                    <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap" data-role="">
-                        <label class="cc-label-invisible">&nbsp;</label>
-                        <span class="cc-no-remove-hint" style="display:none" aria-hidden="true">—</span>
-                        <button type="button" class="cc-btn-remove-contact removeRowBtn btn-action-icon btn-delete" aria-label="Remove this user" title="Remove this user">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                        </button>
-                    </div>
-                </div>
-            `;
-            wrapper.appendChild(row);
-            applyPlaintiffDefendantLimits();
-            updateRemoveButtons();
-            updateDistributionValueCaps();
-        });
-    }
-
-    function updateRemoveButtons() {
-        const LEGAL_RE = 'LEGAL_RE';
-        const rows = wrapper.querySelectorAll('.user-row');
-        let legalReCount = 0;
-        rows.forEach(function(r) {
-            const sel = r.querySelector('select[name*="[role]"]');
-            if (sel && sel.value === LEGAL_RE) legalReCount++;
-        });
-        rows.forEach(function(row) {
-            const sel = row.querySelector('select[name*="[role]"]');
-            const role = sel ? sel.value : '';
-            const removeCell = row.querySelector('.cc-remove-wrap') || row.querySelector('.cc-contact-remove-cell');
-            if (!removeCell) return;
-            const btn = removeCell.querySelector('.cc-btn-remove-contact');
-            const hint = removeCell.querySelector('.cc-no-remove-hint');
-            const cannotRemove = role === 'PL' || role === 'DEF' || (role === LEGAL_RE && legalReCount <= 1);
-            if (btn) {
-                btn.style.display = cannotRemove ? 'none' : '';
-                btn.disabled = cannotRemove;
-            }
-            if (hint) hint.style.display = cannotRemove ? '' : 'none';
-            removeCell.setAttribute('data-role', role);
-        });
-    }
-    updateRemoveButtons();
-
-    wrapper.addEventListener('click', function(e) {
-        var btn = e.target && (e.target.closest('.removeRowBtn') || e.target.closest('.cc-btn-remove-contact'));
-        if (!btn || btn.disabled) return;
-        const row = btn.closest('.user-row');
-        if (!row) return;
-        row.remove();
-        applyPlaintiffDefendantLimits();
-        updateRemoveButtons();
-    });
 });
 
 (function() {

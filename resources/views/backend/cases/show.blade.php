@@ -11,8 +11,18 @@
     $activityCount = $activityCount ?? 0;
 
     $roleBadgeClass = function ($row) {
+        if ($row->role_value === 'LEGAL_RE') {
+            return 'cs-role-employee';
+        }
+        if ($row->role_value === 'DEF') {
+            return 'cs-role-defendant';
+        }
+        if ($row->role_value === 'PL') {
+            return 'cs-role-plaintiff';
+        }
+
         $rn = strtolower($row->role_name ?? '');
-        if ($row->role_value === 'LEGAL_RE' || str_contains($rn, 'employee')) {
+        if (str_contains($rn, 'employee')) {
             return 'cs-role-employee';
         }
         if (str_contains($rn, 'defendant')) {
@@ -22,6 +32,14 @@
             return 'cs-role-plaintiff';
         }
         return 'cs-role-other';
+    };
+
+    $caseRoleDisplayName = function ($row) {
+        return match ($row->role_value ?? '') {
+            'PL' => 'Client',
+            'DEF' => 'Spouse',
+            default => $row->role_name ?? 'Not Assigned',
+        };
     };
 
     $userInitials = function ($name) {
@@ -68,6 +86,27 @@
     $showDistributionCaps = in_array($case->distribution_method_value, ['DIST_FCP', 'DIST_CAP'], true);
     $clientCapUser = $case->caseUsers->firstWhere('role_value', 'PL');
     $spouseCapUser = $case->caseUsers->firstWhere('role_value', 'DEF');
+
+    $partyByUserId = $case->caseUsers
+        ->whereIn('role_value', ['PL', 'DEF'])
+        ->keyBy(fn ($partyRow) => (int) $partyRow->user_id)
+        ->map(fn ($partyRow) => [
+            'name' => $partyRow->user_name ?? 'N/A',
+            'label' => $partyRow->role_value === 'PL' ? 'Client' : 'Spouse',
+        ]);
+
+    $legalRepresentsLabel = function ($row) use ($partyByUserId) {
+        if (($row->role_value ?? '') !== 'LEGAL_RE' || empty($row->representing_to_user)) {
+            return null;
+        }
+
+        $party = $partyByUserId->get((int) $row->representing_to_user);
+        if (!$party) {
+            return null;
+        }
+
+        return 'Representing ' . $party['name'] . ' (' . $party['label'] . ')';
+    };
 @endphp
 
 <div class="case-show-modern">
@@ -293,10 +332,17 @@
                 @if($case->caseUsers->count() > 0)
                     <div class="cs-user-grid">
                         @foreach($case->caseUsers as $row)
+                            @php $representsLabel = $legalRepresentsLabel($row); @endphp
                             <article class="cs-user-card-v2" data-mapping-id="{{ $row->id }}">
                                 <div class="cs-user-avatar" aria-hidden="true">{{ $userInitials($row->user_name) }}</div>
                                 <div class="cs-user-body">
                                     <div class="cs-user-name">{{ $row->user_name ?? 'N/A' }}</div>
+                                    @if($representsLabel)
+                                        <p class="cs-user-represents">
+                                            <i class="fas fa-briefcase" aria-hidden="true"></i>
+                                            {{ $representsLabel }}
+                                        </p>
+                                    @endif
                                     <div class="cs-user-meta">
                                         <span><i class="fas fa-envelope" aria-hidden="true"></i> {{ $row->user_email ?? 'N/A' }}</span>
                                         <span><i class="fas fa-phone" aria-hidden="true"></i> {{ $row->user_phone ?? 'N/A' }}</span>
@@ -304,7 +350,7 @@
                                         <span><i class="fas fa-hand-holding-usd" aria-hidden="true"></i> Value cap: {{ $itemMoney($row->distribution_value_cap ?? null) }}</span>
                                         @endif
                                     </div>
-                                    <span class="cs-role-badge {{ $roleBadgeClass($row) }}">{{ $row->role_name ?? 'Not Assigned' }}</span>
+                                    <span class="cs-role-badge {{ $roleBadgeClass($row) }}">{{ $caseRoleDisplayName($row) }}</span>
                                 </div>
                             </article>
                         @endforeach

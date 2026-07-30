@@ -31,6 +31,27 @@ class CaseUserMapping extends Model
         'default_location_id',
     ];
 
+    protected $casts = [
+        'is_active' => 'boolean',
+        'participate_in_distribution' => 'boolean',
+        'distribution_value_cap' => 'float',
+    ];
+
+    /**
+     * Active mappings only (treat null is_active as active for legacy rows).
+     */
+    public function scopeActive($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('is_active', true)->orWhereNull('is_active');
+        });
+    }
+
+    public function isCaseParty(): bool
+    {
+        return in_array($this->role_value, ['PL', 'DEF'], true);
+    }
+
     public $timestamps = false; // Using custom timestamp fields
 
     // Relationships
