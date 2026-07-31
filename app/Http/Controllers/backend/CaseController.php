@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\SendDistributionSummaryEmailsJob;
+use App\Mail\CasePartyInvitationMail;
 use App\Models\AssociatedLocation;
 use App\Models\CaseActivity;
 use App\Models\CaseUserMapping;
@@ -20,6 +21,8 @@ use App\Support\AdminContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 
 class CaseController extends Controller
@@ -1812,6 +1815,117 @@ class CaseController extends Controller
     /**
      * Find an existing user by id/email or create one. Skips creating when the email already exists (case-insensitive).
      */
+    private function casePartyRoleLabel(?string $roleValue): string
+    {
+        return match ($roleValue) {
+            'PL' => 'Client',
+            'DEF' => 'Spouse',
+            'LEGAL_RE' => 'Legal Representative',
+            default => 'Participant',
+        };
+    }
+
+    private function partyUserDisplayName(?int $userId): ?string
+    {
+        if (!$userId) {
+            return null;
+        }
+
+        $name = trim((string) User::query()->whereKey($userId)->value('name'));
+
+        return $name !== '' ? $name : null;
+    }
+
+    /**
+     * @param  array<int, array{user_id: int, role_value: string}>  $queue
+     */
+    private function queueCasePartyInvitation(array &$queue, int $userId, ?string $roleValue): void
+    {
+        if ($userId <= 0 || $userId === (int) Auth::id()) {
+            return;
+        }
+
+        $queue[$userId] = [
+            'user_id' => $userId,
+            'role_value' => (string) ($roleValue ?? ''),
+        ];
+    }
+
+    /**
+     * @param  array<int, true>  $usersOnCaseBefore
+     * @param  array<int, array{user_id: int, role_value: string}>  $queue
+     */
+    private function maybeQueueCasePartyInvitation(
+        array &$queue,
+        array $usersOnCaseBefore,
+        int $userId,
+        ?string $roleValue
+    ): void {
+        if (isset($usersOnCaseBefore[$userId])) {
+            return;
+        }
+
+        $this->queueCasePartyInvitation($queue, $userId, $roleValue);
+    }
+
+    /**
+     * @param  array<int, array{user_id: int, role_value: string}>  $invitations
+     * @param  array{client: int|null, spouse: int|null}  $partyUserIds
+     */
+    private function sendCasePartyInvitationEmails(
+        CourtCase $case,
+        array $invitations,
+        array $partyUserIds,
+        ?User $legalCounsel
+    ): void {
+        if ($invitations === []) {
+            return;
+        }
+
+        $clientName = $this->partyUserDisplayName($partyUserIds['client'] ?? null);
+        $spouseName = $this->partyUserDisplayName($partyUserIds['spouse'] ?? null);
+        $counselName = trim((string) ($legalCounsel?->name ?? ''));
+        if ($counselName === '') {
+            $counselName = trim((string) ($legalCounsel?->email ?? 'Your legal representative'));
+        }
+        if ($counselName === '') {
+            $counselName = 'Your legal representative';
+        }
+
+        $joinUrl = route('admin.login');
+
+        foreach ($invitations as $invitation) {
+            $user = User::query()->find((int) ($invitation['user_id'] ?? 0));
+            if (!$user || trim((string) $user->email) === '') {
+                continue;
+            }
+
+            $recipientName = trim((string) ($user->name ?? ''));
+            if ($recipientName === '') {
+                $recipientName = $user->email;
+            }
+
+            try {
+                Mail::to($user->email)->send(new CasePartyInvitationMail(
+                    recipientName: $recipientName,
+                    caseNumber: (string) $case->case_number,
+                    legalCounselName: $counselName,
+                    roleLabel: $this->casePartyRoleLabel($invitation['role_value'] ?? null),
+                    clientName: $clientName,
+                    spouseName: $spouseName,
+                    joinUrl: $joinUrl,
+                ));
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send case party invitation email', [
+                    'case_id' => $case->id,
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
     private function findOrCreateContactUser(array $row, array &$preloaded, ?User $loggedUser, string $roleKey): User
     {
         $user = $this->resolveContactUser($row, $preloaded);
@@ -2529,6 +2643,7 @@ class CaseController extends Controller
                 $loggedUser
             );
 
+            $invitationQueue = [];
             foreach ($contacts as $index => $row) {
                 try {
                     $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role_id');
@@ -2544,15 +2659,18 @@ class CaseController extends Controller
                     $partyUserIds['spouse'] = $userId;
                 }
 
-                $this->createCaseUserMappingIfAbsent(
+                if ($this->createCaseUserMappingIfAbsent(
                     (int) $case->id,
                     $userId,
                     $this->caseUserMappingAttributesFromRow($row, $request, 'role_id', $partyUserIds, (int) $index),
                     $mappedUserIds
-                );
+                )) {
+                    $this->queueCasePartyInvitation($invitationQueue, $userId, $row['role_id'] ?? null);
+                }
             }
 
             DB::commit();
+            $this->sendCasePartyInvitationEmails($case, $invitationQueue, $partyUserIds, $loggedUser);
             return redirect()->route('admin.cases.index')->with('success', 'Case created successfully');
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -2712,6 +2830,14 @@ class CaseController extends Controller
                 ->toArray();
 
             /** Soft-delete removed rows (never Client or Spouse) */
+            $usersOnCaseBefore = CaseUserMapping::query()
+                ->where('case_id', $case->id)
+                ->active()
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->flip()
+                ->all();
+
             $this->softDeleteRemovedCaseUsers($case, $submittedMappingIds);
 
             $preloadedUsers = $this->preloadContactUsers(
@@ -2736,6 +2862,7 @@ class CaseController extends Controller
             );
 
             /** Save / Update Users & Mappings */
+            $invitationQueue = [];
             foreach ($users as $rowIndex => $row) {
                 $mappingId = $row['mapping_id'] ?? null;
 
@@ -2808,13 +2935,27 @@ class CaseController extends Controller
                         ['user_id' => $user->id]
                     ));
                     $mappedUserIds[$userId] = true;
+                    $this->maybeQueueCasePartyInvitation(
+                        $invitationQueue,
+                        $usersOnCaseBefore,
+                        $userId,
+                        $row['role'] ?? null
+                    );
                     continue;
                 }
 
-                $this->createCaseUserMappingIfAbsent((int) $case->id, $userId, $mappingAttributes, $mappedUserIds);
+                if ($this->createCaseUserMappingIfAbsent((int) $case->id, $userId, $mappingAttributes, $mappedUserIds)) {
+                    $this->maybeQueueCasePartyInvitation(
+                        $invitationQueue,
+                        $usersOnCaseBefore,
+                        $userId,
+                        $row['role'] ?? null
+                    );
+                }
             }
 
             DB::commit();
+            $this->sendCasePartyInvitationEmails($case, $invitationQueue, $partyUserIds, $loggedUser);
             return redirect()->route('admin.cases.index')->with('success', 'Case updated successfully');
 
         } catch (\Illuminate\Validation\ValidationException $e) {
