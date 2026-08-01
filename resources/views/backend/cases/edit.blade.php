@@ -12,21 +12,10 @@
                 <span class="cc-breadcrumb-sep" aria-hidden="true">/</span>
                 <span class="cc-breadcrumb-current">Edit Case</span>
             </nav>
+            <h1 class="cc-page-title">Edit Case {{ $case->case_number }}</h1>
         </header>
 
-        @if(session('error'))
-            <div class="cc-alert cc-alert-danger" role="alert">{{ session('error') }}</div>
-        @endif
-
-        @if($errors->any())
-            <div class="cc-alert cc-alert-danger" role="alert">
-                <ul class="mb-0 pl-3">
-                    @foreach($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
+        @include('backend.cases.partials.flash-alerts')
 
         <div class="cc-form-container">
             @php
@@ -310,21 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-(function() {
-    var select = document.getElementById('distribution_method');
-    var helper = document.getElementById('distribution_method_helper');
-    if (!select || !helper) return;
-    function updateDistributionHelper() {
-        var opt = select.options[select.selectedIndex];
-        var text = opt && opt.getAttribute('data-helper-text') ? opt.getAttribute('data-helper-text') : '';
-        helper.textContent = text;
-        var hasText = Boolean(text);
-        helper.style.display = hasText ? '' : 'none';
-        helper.setAttribute('aria-hidden', hasText ? 'false' : 'true');
-    }
-    select.addEventListener('change', updateDistributionHelper);
-    updateDistributionHelper();
-})();
 </script>
+<script src="{{ asset('backend-assets/js/case-distribution-method-helper.js') }}"></script>
 @endpush
 @endsection

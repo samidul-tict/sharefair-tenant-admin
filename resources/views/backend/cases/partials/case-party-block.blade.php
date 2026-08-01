@@ -54,6 +54,10 @@
                         id="{{ $fieldPrefix }}_{{ $index }}_user_search"
                         class="cc-user-search-input @if($isLocked) cc-field-locked @endif"
                         data-contact-index="{{ $index }}"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-expanded="false"
+                        aria-controls="{{ $fieldPrefix }}_{{ $index }}_results"
                         placeholder="Type name or email..."
                         value="{{ $searchDisplay }}"
                         autocomplete="off"
@@ -147,7 +151,7 @@
             @if($canRemove)
                 <div class="cc-form-group cc-contact-remove-cell cc-remove-wrap">
                     <label class="cc-label-invisible">&nbsp;</label>
-                    <button type="button" class="cc-btn-remove-contact btn-action-icon btn-delete" aria-label="Remove participant" title="Remove participant">
+                    <button type="button" class="cc-btn-remove-contact btn-action-icon btn-delete" aria-label="Remove legal representative" title="Remove legal representative">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                     </button>
                 </div>

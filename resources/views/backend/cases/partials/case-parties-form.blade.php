@@ -9,7 +9,7 @@
 @endphp
 
 <div class="cc-section-error-wrap{{ $errors->has($fieldPrefix) ? ' cc-has-error' : '' }}">
-    <span class="cc-section-title">{{ $sectionTitle ?? 'Case Parties & Counsel' }}</span>
+    <h2 class="cc-section-title">{{ $sectionTitle ?? 'Case Parties & Counsel' }}</h2>
     <p class="cc-section-hint" id="case-parties-desc">
         {{ $sectionHint ?? 'Enter each party and their counsel in the order used in legal filings. Client and Spouse are required. At least one attorney must be listed for the Client.' }}
     </p>
@@ -101,6 +101,19 @@
 
 <div class="cc-form-actions cc-add-contact-wrap">
     <button type="button" id="casePartiesAddBtn" class="cc-btn cc-btn-outline" aria-describedby="case-parties-desc">+ Add legal representative</button>
+</div>
+
+<div id="casePartyAdditionalPrototype" hidden aria-hidden="true">
+    @include('backend.cases.partials.case-party-block', [
+        'fieldPrefix' => $fieldPrefix,
+        'roleField' => $roleField,
+        'index' => '__INDEX__',
+        'blockType' => 'additional',
+        'blockTitle' => 'Additional legal representative',
+        'roleValue' => 'LEGAL_RE',
+        'row' => [],
+        'canRemove' => true,
+    ])
 </div>
 
 @push('scripts')

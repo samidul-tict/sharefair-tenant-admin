@@ -3,12 +3,7 @@
 
 @section('proxima')
 <div class="cases-list-modern">
-    @if (session('success'))
-        <div class="alert alert-success" role="alert">{{ session('success') }}</div>
-    @endif
-    @if (session('error'))
-        <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
-    @endif
+    @include('backend.cases.partials.flash-alerts')
 
     <div class="page-header">
         <div class="header-content">
@@ -17,6 +12,7 @@
                 <span class="breadcrumb-separator" aria-hidden="true">/</span>
                 <span class="breadcrumb-current">Cases</span>
             </nav>
+            <h1 class="page-title">Cases</h1>
         </div>
         @if(hasPermission('cases', 'create') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A'))
         <a href="{{ route('admin.cases.create') }}" class="add-case-btn">Add New Case</a>

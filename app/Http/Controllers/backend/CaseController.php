@@ -1926,8 +1926,38 @@ class CaseController extends Controller
         }
     }
 
-    private function findOrCreateContactUser(array $row, array &$preloaded, ?User $loggedUser, string $roleKey): User
+    private function rejectContactPhoneEmailMismatch(User $user, string $emailKey, ?string $validationKey): void
     {
+        if ($emailKey === '') {
+            return;
+        }
+
+        $existingEmail = strtolower(trim((string) $user->email));
+        if ($existingEmail === $emailKey) {
+            return;
+        }
+
+        $ownerLabel = trim((string) ($user->name ?? ''));
+        if ($ownerLabel === '') {
+            $ownerLabel = (string) $user->email;
+        }
+
+        $field = $validationKey !== null && $validationKey !== ''
+            ? $validationKey . '.phone'
+            : 'phone';
+
+        throw \Illuminate\Validation\ValidationException::withMessages([
+            $field => 'That phone number is already registered to ' . $ownerLabel . '. Enter a different phone number or search for the existing user.',
+        ]);
+    }
+
+    private function findOrCreateContactUser(
+        array $row,
+        array &$preloaded,
+        ?User $loggedUser,
+        string $roleKey,
+        ?string $validationKey = null
+    ): User {
         $user = $this->resolveContactUser($row, $preloaded);
         if ($user) {
             return $user;
@@ -1944,6 +1974,7 @@ class CaseController extends Controller
         $user = $this->findExistingUserByEmailOrPhone($emailKey, $row['phone'] ?? null);
 
         if ($user) {
+            $this->rejectContactPhoneEmailMismatch($user, $emailKey, $validationKey);
             $preloaded['by_id']->put($user->id, $user);
             $preloaded['by_email']->put(strtolower(trim((string) $user->email)), $user);
 
@@ -1971,10 +2002,14 @@ class CaseController extends Controller
             $this->rollbackDbSavepoint($savepoint);
             $user = $this->findExistingUserByEmailOrPhone($emailKey, $row['phone'] ?? null);
             if (!$user) {
+                $field = $validationKey !== null && $validationKey !== ''
+                    ? $validationKey . '.email'
+                    : 'email';
                 throw \Illuminate\Validation\ValidationException::withMessages([
-                    'email' => $this->uniqueConstraintContactMessage($e),
+                    $field => $this->uniqueConstraintContactMessage($e),
                 ]);
             }
+            $this->rejectContactPhoneEmailMismatch($user, $emailKey, $validationKey);
             $preloaded['by_id']->put($user->id, $user);
             $preloaded['by_email']->put(strtolower(trim((string) $user->email)), $user);
 
@@ -2646,9 +2681,9 @@ class CaseController extends Controller
             $invitationQueue = [];
             foreach ($contacts as $index => $row) {
                 try {
-                    $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role_id');
+                    $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role_id', 'contacts.' . $index);
                 } catch (\Illuminate\Validation\ValidationException $e) {
-                    continue;
+                    throw $e;
                 }
 
                 $userId = (int) $user->id;
@@ -2892,11 +2927,15 @@ class CaseController extends Controller
                 }
 
                 try {
-                    $user = $this->findOrCreateContactUser($row, $preloadedUsers, $loggedUser, 'role');
+                    $user = $this->findOrCreateContactUser(
+                        $row,
+                        $preloadedUsers,
+                        $loggedUser,
+                        'role',
+                        'users.' . $rowIndex
+                    );
                 } catch (\Illuminate\Validation\ValidationException $e) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        "users.$rowIndex.email" => 'Either choose an existing user or enter email, name and phone.',
-                    ]);
+                    throw $e;
                 }
 
                 $userId = (int) $user->id;
