@@ -7,7 +7,7 @@
 @if (!empty($showDistributedFlash) && request('distributed'))
     <div class="cc-alert cc-alert-success" role="alert">Assets distributed successfully.</div>
 @endif
-@if ($errors->any())
+@if (isset($errors) && $errors->any())
     <div class="cc-alert cc-alert-danger" role="alert">
         <ul class="cc-alert-list mb-0">
             @foreach ($errors->all() as $error)
