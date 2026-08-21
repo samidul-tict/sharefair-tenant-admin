@@ -16,8 +16,6 @@ class DefaultController extends Controller
         $tenantId = $logUser->tenant_id ?? null;
 
         $caseCount = 0;
-        $caseTypeLabels = [];
-        $caseTypeData = [];
         $caseStatusLabels = [];
         $caseStatusData = [];
         $slaLabels = ['Deadline passed', 'Due in 7 days', 'Due in a month', 'On track'];
@@ -37,30 +35,17 @@ class DefaultController extends Controller
             $caseCount = $tenantCaseIds->count();
 
             if ($caseCount > 0) {
-                $typeCounts = CourtCase::whereIn('id', $tenantCaseIds)
-                    ->select('case_type_value', DB::raw('count(*) as total'))
-                    ->groupBy('case_type_value')
-                    ->pluck('total', 'case_type_value');
-
                 $statusCounts = CourtCase::whereIn('id', $tenantCaseIds)
                     ->select('case_status_value', DB::raw('count(*) as total'))
                     ->groupBy('case_status_value')
                     ->pluck('total', 'case_status_value');
 
-                $typeValues = $typeCounts->keys()->filter()->toArray();
                 $statusValues = $statusCounts->keys()->filter()->toArray();
 
-                $typeNames = $typeValues
-                    ? DB::table('data_element')->whereIn('value', $typeValues)->pluck('name', 'value')->toArray()
-                    : [];
                 $statusNames = $statusValues
                     ? DB::table('data_element')->whereIn('value', $statusValues)->pluck('name', 'value')->toArray()
                     : [];
 
-                foreach ($typeCounts as $value => $total) {
-                    $caseTypeLabels[] = $typeNames[$value] ?? $value;
-                    $caseTypeData[] = (int) $total;
-                }
                 foreach ($statusCounts as $value => $total) {
                     $caseStatusLabels[] = $statusNames[$value] ?? $value;
                     $caseStatusData[] = (int) $total;
@@ -96,7 +81,7 @@ class DefaultController extends Controller
 
         $attorneyDistributionCases = $logUser
             ? CourtCase::query()
-                ->with(['caseType', 'caseStatus'])
+                ->with(['caseStatus'])
                 ->where('is_active', true)
                 ->accessibleTo($logUser)
                 ->needsAttorneyDistribution()
@@ -108,8 +93,6 @@ class DefaultController extends Controller
         return view('backend.default.dashboard', compact(
             'caseCount',
             'employeeCount',
-            'caseTypeLabels',
-            'caseTypeData',
             'caseStatusLabels',
             'caseStatusData',
             'slaLabels',

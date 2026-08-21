@@ -76,7 +76,6 @@
                                     <thead>
                                         <tr>
                                             <th scope="col">Case number</th>
-                                            <th scope="col">Case type</th>
                                             <th scope="col">Status</th>
                                             <th scope="col" class="text-end">Action</th>
                                         </tr>
@@ -87,7 +86,6 @@
                                                 <td>
                                                     <a href="{{ route('admin.cases.show', $actionCase->id) }}" class="case-number">{{ $actionCase->case_number }}</a>
                                                 </td>
-                                                <td>{{ $actionCase->caseType?->name ?? $actionCase->case_type_value }}</td>
                                                 <td>
                                                     <span class="status-badge status-pending">
                                                         <span class="status-dot" aria-hidden="true"></span>
@@ -111,7 +109,7 @@
         </div>
 
         <div class="row mt-4">
-            <div class="col-xl-4 col-lg-6 col-md-12">
+            <div class="col-xl-6 col-lg-6 col-md-12">
                 <div class="card">
                     <div class="card-header">
                         <h4 class="card-title">Cases by Status</h4>
@@ -125,7 +123,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-xl-4 col-lg-6 col-md-12">
+            <div class="col-xl-6 col-lg-6 col-md-12">
                 <div class="card">
                     <div class="card-header">
                         <h4 class="card-title">Case SLA / Deadline</h4>
@@ -133,20 +131,6 @@
                     <div class="card-body">
                         @if(array_sum($slaData ?? []) > 0)
                             <div id="dashboard-chart-sla" class="dashboard-pie-chart" role="img" aria-label="Pie chart of cases by SLA deadline"></div>
-                        @else
-                            <p class="text-muted mb-0 text-center py-4">No case data to display.</p>
-                        @endif
-                    </div>
-                </div>
-            </div>
-            <div class="col-xl-4 col-lg-6 col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h4 class="card-title">Cases by Type</h4>
-                    </div>
-                    <div class="card-body">
-                        @if(!empty($caseTypeData))
-                            <div id="dashboard-chart-case-type" class="dashboard-pie-chart" role="img" aria-label="Pie chart of cases by type"></div>
                         @else
                             <p class="text-muted mb-0 text-center py-4">No case data to display.</p>
                         @endif
@@ -163,23 +147,10 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    var caseTypeLabels = @json($caseTypeLabels ?? []);
-    var caseTypeData = @json($caseTypeData ?? []);
     var caseStatusLabels = @json($caseStatusLabels ?? []);
     var caseStatusData = @json($caseStatusData ?? []);
     var slaLabels = @json($slaLabels ?? []);
     var slaData = @json($slaData ?? []);
-
-    if (typeof ApexCharts !== 'undefined' && caseTypeData.length) {
-        new ApexCharts(document.querySelector('#dashboard-chart-case-type'), {
-            chart: { type: 'pie', height: 320 },
-            series: caseTypeData,
-            labels: caseTypeLabels,
-            legend: { position: 'bottom', horizontalAlign: 'center' },
-            colors: ['#0A2540', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899'],
-            dataLabels: { enabled: true }
-        }).render();
-    }
 
     if (typeof ApexCharts !== 'undefined' && caseStatusData.length) {
         new ApexCharts(document.querySelector('#dashboard-chart-case-status'), {

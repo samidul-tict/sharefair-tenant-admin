@@ -36,28 +36,6 @@
                             <div id="case_number-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
                     </div>
-                    <div class="cc-form-group">
-                        <label for="case_type">
-                            Case Type
-                            <span class="cc-required-asterisk" aria-hidden="true">*</span>
-                        </label>
-                        <select id="case_type" name="case_type" required aria-required="true" class="@error('case_type') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_type') ? 'true' : 'false' }}" @error('case_type') aria-describedby="case_type-error" @enderror>
-                            <option value="">Select Case Type</option>
-                            @foreach ($caseTypes as $type)
-                                <option value="{{ $type->value }}" {{ old('case_type') == $type->value ? 'selected' : '' }}>{{ $type->name }}</option>
-                            @endforeach
-                        </select>
-                        @error('case_type')
-                            <div id="case_type-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="cc-form-group">
-                        <label for="court_name">Court Name</label>
-                        <input type="text" id="court_name" name="court_name" value="{{ old('court_name') }}" placeholder="Enter court name" aria-label="Court name" class="@error('court_name') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('court_name') ? 'true' : 'false' }}" @error('court_name') aria-describedby="court_name-error" @enderror>
-                        @error('court_name')
-                            <div id="court_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                        @enderror
-                    </div>
                 </div>
 
                 <div class="cc-form-row">

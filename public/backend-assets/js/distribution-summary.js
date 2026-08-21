@@ -240,22 +240,34 @@
         var unresolvedCount = (d.unresolved_items || []).length;
         var alert = '';
         if (unresolvedCount > 0) {
-            var unresolvedMsg = canConfirm
-                ? ' need attention before you confirm.'
-                : ' require attention.';
-            alert +=
-                '<button type="button" class="cs-dist-attention-banner" data-dist-goto-unresolved aria-label="View ' +
-                unresolvedCount +
-                ' unresolved asset' +
-                (unresolvedCount === 1 ? '' : 's') +
-                ' in Unresolved">' +
-                '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
-                '<span><strong>' +
-                unresolvedCount +
-                '</strong> unresolved asset' +
-                (unresolvedCount === 1 ? '' : 's') +
-                unresolvedMsg +
-                ' <span class="cs-dist-attention-banner-action">View Unresolved</span></span></button>';
+            if (canConfirm) {
+                alert +=
+                    '<div class="cs-dist-attention-banner cs-dist-attention-banner-static" role="status">' +
+                    '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
+                    '<span>Case can be distributed. Note: <strong>' +
+                    unresolvedCount +
+                    '</strong> item' +
+                    (unresolvedCount === 1 ? ' is' : 's are') +
+                    ' unresolved and will not be included in distribution. You can ' +
+                    '(a) <button type="button" class="cs-dist-attention-inline-link" data-dist-goto-confirm>Select to distribute assets</button>, ' +
+                    'whereby these items will require manual intervention by you or ' +
+                    '(b) <button type="button" class="cs-dist-attention-inline-link" data-dist-request-resolve>Click here</button> ' +
+                    'to request client/spouse to resolve items prior to resubmission for distribution.</span></div>';
+            } else {
+                alert +=
+                    '<button type="button" class="cs-dist-attention-banner" data-dist-goto-unresolved aria-label="View ' +
+                    unresolvedCount +
+                    ' unresolved asset' +
+                    (unresolvedCount === 1 ? '' : 's') +
+                    ' in Unresolved">' +
+                    '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
+                    '<span><strong>' +
+                    unresolvedCount +
+                    '</strong> unresolved asset' +
+                    (unresolvedCount === 1 ? '' : 's') +
+                    ' require attention.' +
+                    ' <span class="cs-dist-attention-banner-action">View Unresolved</span></span></button>';
+            }
         }
         if (dontWantCount > 0) {
             var msg = canConfirm
@@ -374,12 +386,34 @@
             unresolvedNoticeEl.hidden = false;
             unresolvedNoticeEl.innerHTML =
                 '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
-                '<span><strong>Unresolved assets present.</strong> ' +
+                '<span>Case can be distributed. Note: <strong>' +
                 unresolvedCount +
-                ' unresolved asset' +
-                (unresolvedCount === 1 ? '' : 's') +
-                ' will remain outside this distribution if you confirm. After distribution is confirmed, they can no longer be addressed through this workflow. ' +
-                '<button type="button" class="cs-dist-unresolved-notice-link" data-dist-goto-unresolved>Review unresolved assets</button></span>';
+                '</strong> item' +
+                (unresolvedCount === 1 ? ' is' : 's are') +
+                ' unresolved and will not be included in distribution. You can ' +
+                '(a) <button type="button" class="cs-dist-unresolved-notice-link" data-dist-goto-confirm>Select to distribute assets</button>, ' +
+                'whereby these items will require manual intervention by you or ' +
+                '(b) <button type="button" class="cs-dist-unresolved-notice-link" data-dist-request-resolve>Click here</button> ' +
+                'to request client/spouse to resolve items prior to resubmission for distribution.</span>';
+        }
+
+        function goToConfirmActions() {
+            if (!actionsAside) return;
+            actionsAside.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (reviewCheckbox && typeof reviewCheckbox.focus === 'function') {
+                reviewCheckbox.focus();
+            } else if (confirmBtn && typeof confirmBtn.focus === 'function') {
+                confirmBtn.focus();
+            }
+        }
+
+        function openRequestResolveEmail() {
+            var emailOpenBtn = pageScope.querySelector('[data-dist-email-open]');
+            if (emailOpenBtn) {
+                emailOpenBtn.click();
+                return;
+            }
+            goToUnresolvedTab();
         }
 
         function openUnresolvedConfirmModal(unresolvedCount) {
@@ -1383,6 +1417,16 @@
             if (e.target && e.target.closest('[data-dist-goto-unresolved]')) {
                 e.preventDefault();
                 goToUnresolvedTab();
+                return;
+            }
+            if (e.target && e.target.closest('[data-dist-goto-confirm]')) {
+                e.preventDefault();
+                goToConfirmActions();
+                return;
+            }
+            if (e.target && e.target.closest('[data-dist-request-resolve]')) {
+                e.preventDefault();
+                openRequestResolveEmail();
             }
         });
 

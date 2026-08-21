@@ -54,29 +54,6 @@
                             <div id="case_number-error" class="cc-field-error" role="alert">{{ $message }}</div>
                         @enderror
                     </div>
-                    <div class="cc-form-group">
-                        <label for="case_type">
-                            Case Type
-                            <span class="cc-required-asterisk" aria-hidden="true">*</span>
-                        </label>
-                        <select id="case_type" required aria-required="true" disabled aria-disabled="true" class="cc-field-locked @error('case_type') cc-is-invalid @enderror" aria-invalid="{{ $errors->has('case_type') ? 'true' : 'false' }}" @error('case_type') aria-describedby="case_type-locked-hint case_type-error" @enderror>
-                            <option value="">Select Case Type</option>
-                            @foreach ($caseType as $item)
-                                <option value="{{ $item->value }}" {{ old('case_type', $case->case_type_value) == $item->value ? 'selected' : '' }}>{{ $item->name }}</option>
-                            @endforeach
-                        </select>
-                        <p id="case_type-locked-hint" class="cc-section-hint cc-field-hint">Cannot be changed after the case is created.</p>
-                        @error('case_type')
-                            <div id="case_type-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="cc-form-group">
-                        <label for="court_name">Court Name</label>
-                        <input type="text" id="court_name" name="court_name" value="{{ old('court_name', $case->court_name) }}" placeholder="Enter court name" aria-label="Court name" @if($legalHoldOnly) readonly aria-readonly="true" class="cc-field-locked @error('court_name') cc-is-invalid @enderror" @else class="@error('court_name') cc-is-invalid @enderror" @endif aria-invalid="{{ $errors->has('court_name') ? 'true' : 'false' }}" @error('court_name') aria-describedby="court_name-error" @enderror>
-                        @error('court_name')
-                            <div id="court_name-error" class="cc-field-error" role="alert">{{ $message }}</div>
-                        @enderror
-                    </div>
                 </div>
 
                 <div class="cc-form-row">

@@ -147,6 +147,16 @@ class CourtCase extends Model
     }
 
     /**
+     * Whether the case may still be deleted from the admin UI.
+     * Resolved/closed cases keep historical distribution data and must not be removed.
+     */
+    public function canBeDeleted(): bool
+    {
+        return !$this->isResolvedCompleted()
+            && $this->case_status_value !== 'PEND_CLS';
+    }
+
+    /**
      * Field-lock flags for the case edit form and update handler.
      *
      * @return array{

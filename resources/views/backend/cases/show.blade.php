@@ -3,7 +3,6 @@
 @section('proxima')
 
 @php
-    $caseTypeName = $case->caseType?->name ?? $case->case_type_value;
     $caseStatusName = $case->caseStatus?->name ?? ($case->case_status_value ?? 'N/A');
     $userCount = $case->caseUsers->count();
     $assetCount = (int) ($assetCount ?? 0);
@@ -133,7 +132,6 @@
         <div class="cs-header">
             <div class="cs-case-title">
                 <h1 class="cs-case-number">{{ $case->case_number }}</h1>
-                <div class="cs-case-type-badge">{{ $caseTypeName }}</div>
                 <div class="cs-case-status-badge">
                     <span class="cs-status-dot" aria-hidden="true"></span>
                     {{ $caseStatusName }}
@@ -141,7 +139,7 @@
             </div>
             <div class="cs-header-actions">
                 @if(($showDistributionSummary ?? false) && $canEditCase)
-                <a href="{{ route('admin.cases.distribute.review', $case->id) }}" class="cs-btn-primary cs-btn-distribute">
+                <a href="{{ route('admin.cases.distribute.review', $case->id) }}" class="{{ ($canDistribute ?? false) ? 'cs-btn-primary cs-btn-distribute' : 'cs-btn-secondary cs-btn-distribute cs-btn-distribute-muted' }}">
                     <i class="fas fa-balance-scale" aria-hidden="true"></i>
                     {{ ($canDistribute ?? false) ? 'Distribute assets' : 'Distribution summary' }}
                 </a>
@@ -212,8 +210,6 @@
                 <div class="cs-panel">
                     <h2 class="cs-panel-title"><i class="fas fa-balance-scale" aria-hidden="true"></i> Matter details</h2>
                     <dl class="cs-kv-list">
-                        <div class="cs-kv-row"><dt>Court</dt><dd>{{ $case->court_name ?: '—' }}</dd></div>
-                        <div class="cs-kv-row"><dt>Matter type</dt><dd>{{ $caseTypeName }}</dd></div>
                         <div class="cs-kv-row"><dt>Max arbitration per user</dt><dd>{{ $case->max_number_of_arbitation_per_user ?? '—' }}</dd></div>
                         <div class="cs-kv-row"><dt>Legal hold</dt><dd>{{ $case->is_legal_hold ? 'Yes' : 'No' }}</dd></div>
                         @if($case->is_legal_hold && $case->legal_hold_reason)

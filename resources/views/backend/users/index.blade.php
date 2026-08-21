@@ -121,6 +121,9 @@
 
         @if($users->hasPages())
             <div class="pagination-wrap">
+                <p class="pagination-summary">
+                    Showing {{ $users->firstItem() }} to {{ $users->lastItem() }} of {{ $users->total() }} results
+                </p>
                 {{ $users->appends(request()->except('page'))->links() }}
             </div>
         @endif

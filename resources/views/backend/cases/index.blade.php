@@ -31,7 +31,7 @@
             <form method="GET" action="{{ route('admin.cases.index') }}" class="filter-controls" role="search" aria-label="Filter cases">
                 <div class="filter-group">
                     <label class="filter-label" for="cases-search">Search</label>
-                    <input type="text" id="cases-search" name="search" class="search-input" placeholder="Search case no / type / status..." value="{{ $search ?? '' }}" aria-label="Search case number, type, or status">
+                    <input type="text" id="cases-search" name="search" class="search-input" placeholder="Search case no / status..." value="{{ $search ?? '' }}" aria-label="Search case number or status">
                 </div>
                 <div class="filter-group">
                     <label class="filter-label" for="cases-attention-filter">Attention</label>
@@ -57,18 +57,13 @@
 
     <div class="table-container">
         <table>
-            <caption class="sr-only">List of cases with case number, type, status, legal hold, created by, date, and actions</caption>
+            <caption class="sr-only">List of cases with case number, status, legal hold, created by, date, and actions</caption>
             <thead>
                 <tr>
                     <th scope="col">#</th>
                     <th scope="col" class="sortable">
                         <a href="{{ route('admin.cases.index', array_merge(request()->all(), ['sort' => 'case_number', 'order' => ($sortField == 'case_number' && $sortOrder == 'asc') ? 'desc' : 'asc'])) }}">
                             Case Number {!! $sortField == 'case_number' ? ($sortOrder == 'asc' ? '↑' : '↓') : '' !!}
-                        </a>
-                    </th>
-                    <th scope="col">
-                        <a href="{{ route('admin.cases.index', array_merge(request()->all(), ['sort' => 'case_type_value', 'order' => ($sortField == 'case_type_value' && $sortOrder == 'asc') ? 'desc' : 'asc'])) }}" style="color:inherit;text-decoration:none;">
-                            Case Type {!! $sortField == 'case_type_value' ? ($sortOrder == 'asc' ? '↑' : '↓') : '' !!}
                         </a>
                     </th>
                     <th scope="col">Status</th>
@@ -93,7 +88,6 @@
                         <td>
                             <a href="{{ route('admin.cases.show', ['id' => $case->id]) }}" class="case-number">{{ $case->case_number }}</a>
                         </td>
-                        <td class="case-type">{{ $case->caseType?->name ?? $case->case_type_value }}</td>
                         <td>
                             @if($case->caseStatus)
                                 <span class="status-badge {{ $statusClass }}">
@@ -118,31 +112,49 @@
                         <td class="date">{{ \Carbon\Carbon::parse($case->created_date)->format('d-M-Y') }}</td>
                         <td>
                             <div class="actions actions-icons">
-                                @if(($case->hasDistributionSummary()) && (hasPermission('cases', 'edit') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A')))
-                                <a href="{{ route('admin.cases.distribute.review', $case->id) }}" class="btn-action-icon btn-distribute" title="{{ $case->canLegalRepresentativeDistribute() ? 'Distribute assets' : 'Distribution summary' }}" aria-label="{{ $case->canLegalRepresentativeDistribute() ? 'Distribute assets for case' : 'View distribution summary for case' }} {{ $case->case_number }}">
+                                @php
+                                    $canManageCase = hasPermission('cases', 'edit') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A');
+                                    $canDeletePerm = hasPermission('cases', 'delete') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A');
+                                    $canDistributeNow = $case->canLegalRepresentativeDistribute();
+                                    $hasDistributionSummary = $case->hasDistributionSummary();
+                                    $canDeleteCase = $case->canBeDeleted();
+                                @endphp
+                                @if($canManageCase && ($canDistributeNow || $hasDistributionSummary))
+                                <a
+                                    href="{{ route('admin.cases.distribute.review', $case->id) }}"
+                                    class="btn-action-icon btn-distribute{{ $canDistributeNow ? '' : ' is-muted' }}"
+                                    title="{{ $canDistributeNow ? 'Distribute assets' : 'View distribution summary' }}"
+                                    aria-label="{{ $canDistributeNow ? 'Distribute assets for case' : 'View distribution summary for case' }} {{ $case->case_number }}"
+                                >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22V8"/><path d="m21 3-9 9"/><path d="M3 3l9 9"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
                                 </a>
                                 @endif
-                                @if(hasPermission('cases', 'edit') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A'))
+                                @if($canManageCase)
                                 <a href="{{ route('admin.cases.edit', $case->id) }}" class="btn-action-icon btn-edit" title="Edit case" aria-label="Edit case {{ $case->case_number }}">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                                 </a>
                                 @endif
-                                @if(hasPermission('cases', 'delete') || (isset($logUser) && $logUser->user_role_id == 'TENANT_A'))
-                                <form action="{{ route('admin.cases.destroy', $case->id) }}" method="POST" class="actions-form" onsubmit="return confirm('Are you sure you want to delete this case? This action cannot be undone.');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn-action-icon btn-delete" title="Delete case" aria-label="Delete case {{ $case->case_number }}">
+                                @if($canDeletePerm)
+                                    @if($canDeleteCase)
+                                    <form action="{{ route('admin.cases.destroy', $case->id) }}" method="POST" class="actions-form" onsubmit="return confirm('Are you sure you want to delete this case? This action cannot be undone.');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn-action-icon btn-delete" title="Delete case" aria-label="Delete case {{ $case->case_number }}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                        </button>
+                                    </form>
+                                    @else
+                                    <button type="button" class="btn-action-icon btn-delete is-muted" disabled aria-disabled="true" title="Delete is not available for closed or pending-closure cases" aria-label="Delete unavailable for case {{ $case->case_number }}">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                     </button>
-                                </form>
+                                    @endif
                                 @endif
                             </div>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="empty-state">No cases found.</td>
+                        <td colspan="7" class="empty-state">No cases found.</td>
                     </tr>
                 @endforelse
             </tbody>
@@ -150,6 +162,9 @@
 
         @if($cases->hasPages())
             <div class="pagination-wrap">
+                <p class="pagination-summary">
+                    Showing {{ $cases->firstItem() }} to {{ $cases->lastItem() }} of {{ $cases->total() }} results
+                </p>
                 {{ $cases->appends(request()->except('page'))->links() }}
             </div>
         @endif

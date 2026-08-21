@@ -27,6 +27,8 @@ use Illuminate\Validation\Rule;
 
 class CaseController extends Controller
 {
+    private const DEFAULT_CASE_TYPE_VALUE = 'CIVIL';
+
     /**
      * Current admin user with role/tenant from user_role_mapping.
      */
@@ -73,14 +75,14 @@ class CaseController extends Controller
         $sortField  = $request->input('sort', 'case_number');
         $sortOrder  = $request->input('order', 'asc');
 
-        $allowedSorts = ['case_number', 'case_type_value', 'case_status_value'];
+        $allowedSorts = ['case_number', 'case_status_value'];
         if (!in_array($sortField, $allowedSorts)) {
             $sortField = 'case_number';
         }
 
         
         $cases = CourtCase::query()
-            ->with(['createdBy', 'caseType', 'caseStatus'])
+            ->with(['createdBy', 'caseStatus'])
             ->where('is_active', true);
         $this->applyCaseAccessScope($cases, $logUser);
 
@@ -88,7 +90,6 @@ class CaseController extends Controller
                 ->when($search, function ($query, $search) {
                     $query->where(function ($q) use ($search) {
                         $q->where('case_number', 'ILIKE', "%{$search}%")
-                        ->orWhere('case_type_value', 'ILIKE', "%{$search}%")
                         ->orWhere('case_status_value', 'ILIKE', "%{$search}%");
                     });
                 })
@@ -100,12 +101,6 @@ class CaseController extends Controller
                 })
                 ->orderBy($sortField, $sortOrder)
                 ->paginate(10);
-
-        $caseTypes = DB::table('data_element')
-            ->whereIn('category_id', [6])
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get();
 
         $accessibleCaseQuery = CourtCase::query()->where('is_active', true);
         $this->applyCaseAccessScope($accessibleCaseQuery, $logUser);
@@ -124,7 +119,7 @@ class CaseController extends Controller
                 ->get();
         }
 
-        return view('backend.cases.index', compact('cases', 'search', 'sortField', 'sortOrder', 'logUser', 'caseTypes', 'caseStatuses', 'attentionFilter'));
+        return view('backend.cases.index', compact('cases', 'search', 'sortField', 'sortOrder', 'logUser', 'caseStatuses', 'attentionFilter'));
     }
 
 
@@ -2342,12 +2337,6 @@ class CaseController extends Controller
             ->orderBy('name')
             ->get();
 
-        $caseTypes = DB::table('data_element')
-            ->whereIn('category_id', [6])
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get();
-
         $distributionMethods = $this->distributionMethods();
 
         $partyForm = $this->organizeContactsForPartyForm(old('contacts', []));
@@ -2356,7 +2345,6 @@ class CaseController extends Controller
 
         return view('backend.cases.create', compact(
             'role',
-            'caseTypes',
             'distributionMethods',
             'partySlots',
             'additionalContacts'
@@ -2409,7 +2397,6 @@ class CaseController extends Controller
 
         $rules = array_merge([
             'case_description' => 'nullable|string',
-            'court_name' => 'nullable|string|max:256',
             'is_legal_hold' => 'nullable|boolean',
             'legal_hold_reason' => 'nullable|string|max:4000',
             'legal_hold_start_date' => 'nullable|date',
@@ -2450,7 +2437,6 @@ class CaseController extends Controller
 
         $attributes = array_merge($base, $this->legalHoldAttributesFromRequest($request), [
             'case_description' => $request->case_description,
-            'court_name' => $request->court_name ?: null,
         ]);
 
         if (!$locks['distribution_config']) {
@@ -2471,10 +2457,6 @@ class CaseController extends Controller
     {
         if ($request->has('case_number') && (string) $request->case_number !== (string) $case->case_number) {
             $validator->errors()->add('case_number', 'Case number cannot be changed after the case is created.');
-        }
-
-        if ($request->has('case_type') && (string) $request->case_type !== (string) $case->case_type_value) {
-            $validator->errors()->add('case_type', 'Case type cannot be changed after the case is created.');
         }
 
         if ($request->has('sla_deadline')) {
@@ -2564,9 +2546,7 @@ class CaseController extends Controller
     {
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), array_merge([
             'case_number'      => 'required|unique:cases,case_number',
-            'case_type'        => 'required|exists:data_element,value',
             'case_description' => 'nullable|string',
-            'court_name'       => 'nullable|string|max:256',
             'sla_deadline'     => 'required|date',
             'asset_sla_in_days' => 'required|integer|min:0',
             'max_number_of_arbitation_per_user' => 'required|integer|min:0',
@@ -2630,10 +2610,9 @@ class CaseController extends Controller
 
             $case = CourtCase::create(array_merge([
                 'case_number'      => $request->case_number,
-                'case_type_value'  => $request->case_type,
+                'case_type_value'  => self::DEFAULT_CASE_TYPE_VALUE,
                 'case_status_value' => 'C_NEW',
                 'case_description' => $request->case_description,
-                'court_name'       => $request->court_name ?: null,
                 'sla_deadline'     => $request->sla_deadline ?: null,
                 'asset_sla_in_days' => $request->asset_sla_in_days !== '' && $request->asset_sla_in_days !== null ? (int) $request->asset_sla_in_days : null,
                 'max_number_of_arbitation_per_user' => $request->max_number_of_arbitation_per_user !== '' && $request->max_number_of_arbitation_per_user !== null ? (int) $request->max_number_of_arbitation_per_user : null,
@@ -2737,12 +2716,6 @@ class CaseController extends Controller
             ->whereIn('role_value', ['SAAS_ADM', 'TENANT_A', 'DEF', 'DEL', 'LEGAL_RE', 'PL'])
             ->get();
         
-        $caseType = DB::table('data_element')
-            ->whereIn('category_id', [6])
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get();
-
         $role = DB::table('data_element')
             ->whereIn('category_id', [2])
             ->where('is_active', true)
@@ -2762,7 +2735,6 @@ class CaseController extends Controller
             'case',
             'caseUsers',
             'role',
-            'caseType',
             'distributionMethods',
             'caseEditLocks',
             'partySlots',
@@ -3021,6 +2993,11 @@ class CaseController extends Controller
     {
         try {
             $case = $this->findAccessibleCase($id);
+
+            if (!$case->canBeDeleted()) {
+                return back()->with('error', 'This case cannot be deleted because it is closed or pending closure.');
+            }
+
             $case->delete();
 
             return redirect()->route('admin.cases.index')->with('success', 'Case deleted successfully');
