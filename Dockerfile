@@ -16,8 +16,27 @@ RUN npm run build
 
 # ---------------------------------------------------------------------------
 # Stage 2: Install PHP dependencies with Composer
+# Pin PHP 8.2 to match runtime. composer:2 currently ships PHP 8.5, which
+# rejects league/config -> nette/schema (^1.2, php 8.1-8.4). Spreadsheet also
+# requires ext-gd / ext-zip during composer platform checks.
 # ---------------------------------------------------------------------------
-FROM composer:2 AS vendor
+FROM php:8.2-cli-bookworm AS vendor
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        unzip \
+        libzip-dev \
+        libicu-dev \
+        libpng-dev \
+        libjpeg62-turbo-dev \
+        libfreetype6-dev \
+        libonig-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" zip intl gd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
