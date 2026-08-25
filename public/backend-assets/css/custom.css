@@ -786,6 +786,41 @@ a.text-info:hover {
 .cs-dist-panel.is-active {
     display: block;
 }
+.cs-dist-panel-is-blurred {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    min-height: 14rem;
+}
+.cs-dist-alloc-blur-target {
+    filter: blur(12px);
+    transform: scale(1.02);
+    pointer-events: none;
+    user-select: none;
+}
+.cs-dist-alloc-blur-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(248, 250, 252, 0.28);
+}
+.cs-dist-alloc-blur-message {
+    margin: 0;
+    max-width: 28rem;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--cs-border);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    color: var(--cs-text);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-align: center;
+}
 .cs-dist-panel-title {
     margin: 0 0 0.35rem;
     font-size: 1rem;
@@ -1113,6 +1148,17 @@ a.text-info:hover {
     font-size: 0.8125rem;
     font-weight: 600;
     margin-bottom: 0.65rem;
+}
+.cs-dist-alert-multiline {
+    align-items: flex-start;
+}
+.cs-dist-alert-multiline .cs-dist-alert-body {
+    display: block;
+    line-height: 1.45;
+}
+.cs-dist-alert-follow {
+    display: block;
+    margin-top: 0.45rem;
 }
 .cs-dist-alert-danger {
     background: rgba(239, 68, 68, 0.08);

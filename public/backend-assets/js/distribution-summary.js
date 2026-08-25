@@ -314,6 +314,7 @@
         var successUrl = rootEl.getAttribute('data-success-url');
         var csrfToken = rootEl.getAttribute('data-csrf-token') || '';
         var canConfirm = rootEl.getAttribute('data-can-confirm') === '1';
+        var isPendDis = rootEl.getAttribute('data-is-pend-dis') === '1';
         var canAdjust = rootEl.getAttribute('data-can-adjust') === '1';
         var showCaps = rootEl.getAttribute('data-show-caps') === '1';
         var capPl = rootEl.getAttribute('data-cap-pl');
@@ -601,6 +602,10 @@
             rootEl.querySelectorAll('[data-dist-tab]').forEach(function (btn) {
                 var key = btn.getAttribute('data-dist-tab');
                 var base = btn.getAttribute('data-dist-tab-label') || btn.textContent.trim();
+                if (btn.getAttribute('data-dist-tab-hide-count') === '1') {
+                    btn.textContent = base;
+                    return;
+                }
                 btn.innerHTML = tabCountLabel(base, map[key] || 0);
             });
         }
@@ -623,13 +628,14 @@
 
             var allocationsPanel = rootEl.querySelector('[data-dist-panel="allocations"]');
             if (allocationsPanel) {
+                var allocationsHtml;
                 if (!allocEntries.length) {
-                    allocationsPanel.innerHTML =
+                    allocationsHtml =
                         renderReasonKey() + '<div class="cs-dist-panel-empty">No allocations in this preview.</div>';
                 } else {
-                    allocationsPanel.innerHTML =
+                    allocationsHtml =
                         renderReasonKey() +
-                        '<h3 class="cs-dist-panel-title"><i class="fas fa-tags" aria-hidden="true"></i> Participants</h3>' +
+                        '<h3 class="cs-dist-panel-title"><i class="fas fa-tags" aria-hidden="true"></i> Allocation</h3>' +
                         '<div class="cs-dist-alloc-list cs-dist-allocation-board">' +
                         allocEntries
                             .map(function (entry, i) {
@@ -642,6 +648,19 @@
                             })
                             .join('') +
                         '</div>';
+                }
+                if (isPendDis) {
+                    allocationsPanel.classList.add('cs-dist-panel-is-blurred');
+                    allocationsPanel.innerHTML =
+                        '<div class="cs-dist-alloc-blur-target" aria-hidden="true">' +
+                        allocationsHtml +
+                        '</div>' +
+                        '<div class="cs-dist-alloc-blur-overlay" role="status">' +
+                        '<p class="cs-dist-alloc-blur-message">Run the distribution model to view allocations.</p>' +
+                        '</div>';
+                } else {
+                    allocationsPanel.classList.remove('cs-dist-panel-is-blurred');
+                    allocationsPanel.innerHTML = allocationsHtml;
                 }
             }
 
@@ -691,7 +710,7 @@
                           count +
                           ' unclaimed asset' +
                           (count === 1 ? '' : 's') +
-                          ' — action required</span></div>'
+                          '. Please note that such assets remain eligible for allocation via the Adjust Distribution functionality prior to case closure.</span></div>'
                         : '';
                 var listHtml =
                     count === 0
@@ -745,15 +764,20 @@
                 var unresolvedItems = d.unresolved_items || [];
                 var unresolvedCount = unresolvedItems.length;
                 var unresolvedTotal = d.total_unresolved_items_value || 0;
+                var unresolvedNotice =
+                    '<div class="cs-dist-alert cs-dist-alert-danger cs-dist-alert-multiline" role="status">' +
+                    '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>' +
+                    '<span class="cs-dist-alert-body">Assets pending confirmation, valuation, conflict resolution, or third-party action.' +
+                    '<span class="cs-dist-alert-follow">Please note that such assets remain eligible for allocation via the Adjust Distribution functionality prior to case closure. In the event that these items are not resolved prior to the closure of the case, all outstanding issues must be adjudicated or settled independent of, and external to, the ShareFair software platform.</span></span></div>';
                 if (unresolvedCount === 0) {
                     unresolvedPanel.innerHTML =
                         '<h3 class="cs-dist-panel-title cs-dist-panel-title-muted"><i class="fas fa-hourglass-half" aria-hidden="true"></i> Unresolved</h3>' +
-                        '<p class="cs-dist-panel-desc">Assets still in workflow before distribution is complete.</p>' +
+                        unresolvedNotice +
                         '<div class="cs-dist-panel-empty">No unresolved assets in this case.</div>';
                 } else {
                     unresolvedPanel.innerHTML =
                         '<h3 class="cs-dist-panel-title cs-dist-panel-title-muted"><i class="fas fa-hourglass-half" aria-hidden="true"></i> Unresolved</h3>' +
-                        '<p class="cs-dist-panel-desc">Assets awaiting confirmation, pricing, conflict resolution, or other party action.</p>' +
+                        unresolvedNotice +
                         '<div class="cs-dist-donation-meta">' +
                         '<span>' +
                         unresolvedCount +

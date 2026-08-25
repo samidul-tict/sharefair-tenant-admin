@@ -34,6 +34,7 @@
                 </div>
             </div>
             <div class="cs-header-actions">
+                @unless($isPendDis)
                 <div class="cs-dist-download-wrap">
                     <button type="button" class="cs-btn-secondary cs-dist-download-toggle" id="distDownloadToggle" aria-expanded="false" aria-haspopup="true" aria-controls="distDownloadMenu">
                         <i class="fas fa-download" aria-hidden="true"></i> Download
@@ -51,6 +52,7 @@
                 <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
                     <i class="fas fa-envelope" aria-hidden="true"></i> Email
                 </button>
+                @endunless
                 <a href="{{ route('admin.cases.show', $case->id) }}" class="cs-btn-secondary">
                     <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to case
                 </a>
@@ -65,7 +67,7 @@
                 <p class="cs-distribute-page-lead">
                     @if($canAdjustDistribute ?? false)
                         Assets have been distributed and this case is pending approval.
-                        You can adjust marital asset assignments between participants if needed.
+                        Authorized users may modify the allocation of assigned marital assets, unresolved assets, and unclaimed assets by utilizing the 'Adjust Distribution' functionality provided below.
                     @else
                         Review how assets are allocated across participants for this case.
                     @endif
@@ -109,6 +111,7 @@
             data-success-url="{{ route('admin.cases.show', ['id' => $case->id, 'distributed' => 1]) }}"
             data-csrf-token="{{ csrf_token() }}"
             data-can-confirm="{{ ($canConfirmDistribute ?? false) ? '1' : '0' }}"
+            data-is-pend-dis="{{ $isPendDis ? '1' : '0' }}"
             data-can-adjust="{{ ($canAdjustDistribute ?? false) ? '1' : '0' }}"
             data-show-caps="{{ ($showDistributionCaps ?? false) ? '1' : '0' }}"
             data-cap-pl="{{ isset($distributionValueCaps['PL']) && $distributionValueCaps['PL']->distribution_value_cap !== null ? (float) $distributionValueCaps['PL']->distribution_value_cap : '' }}"
@@ -125,7 +128,7 @@
                 </div>
 
                 <div class="cs-dist-summary-tabs" role="tablist" aria-label="Distribution view">
-                    <button type="button" class="cs-dist-tab is-active" role="tab" id="dist-tab-allocations" aria-selected="true" aria-controls="dist-panel-allocations" data-dist-tab="allocations" data-dist-tab-label="Participants">Participants</button>
+                    <button type="button" class="cs-dist-tab is-active" role="tab" id="dist-tab-allocations" aria-selected="true" aria-controls="dist-panel-allocations" data-dist-tab="allocations" data-dist-tab-label="Allocation" data-dist-tab-hide-count="1">Allocation</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-warning" role="tab" id="dist-tab-non_marital" aria-selected="false" aria-controls="dist-panel-non_marital" data-dist-tab="non_marital" data-dist-tab-label="Non-marital">Non-marital</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-danger" role="tab" id="dist-tab-dont_want" aria-selected="false" aria-controls="dist-panel-dont_want" data-dist-tab="dont_want" data-dist-tab-label="Don't Want">Don't Want</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-success" role="tab" id="dist-tab-donations" aria-selected="false" aria-controls="dist-panel-donations" data-dist-tab="donations" data-dist-tab-label="Donations">Donations</button>
@@ -178,23 +181,6 @@
             <aside class="cs-distribute-page-actions" aria-label="Distribution actions">
                 <p class="cs-dist-adjust-hint">A preliminary asset allocation will be generated based on the selected methodology. All line items can be manually adjusted for both the client and spouse on the subsequent screen prior to finalization.</p>
                 <div class="cs-distribute-page-action-buttons">
-                    <div class="cs-dist-download-wrap cs-dist-download-wrap-inline">
-                        <button type="button" class="cs-btn-secondary cs-dist-download-toggle" data-dist-download-toggle aria-expanded="false" aria-haspopup="true">
-                            <i class="fas fa-download" aria-hidden="true"></i> Download
-                            <i class="fas fa-chevron-down cs-dist-download-caret" aria-hidden="true"></i>
-                        </button>
-                        <div class="cs-dist-download-menu" data-dist-download-menu hidden>
-                            <a href="{{ route('admin.cases.distribute.download', ['id' => $case->id, 'format' => 'pdf']) }}" class="cs-dist-download-option">
-                                <i class="fas fa-file-pdf" aria-hidden="true"></i> PDF
-                            </a>
-                            <a href="{{ route('admin.cases.distribute.download', ['id' => $case->id, 'format' => 'excel']) }}" class="cs-dist-download-option">
-                                <i class="fas fa-file-excel" aria-hidden="true"></i> Excel
-                            </a>
-                        </div>
-                    </div>
-                    <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
-                        <i class="fas fa-envelope" aria-hidden="true"></i> Email
-                    </button>
                     <button type="button" class="cs-btn-primary cs-btn-distribute-confirm" data-dist-confirm disabled>Run Distribution Model</button>
                 </div>
             </aside>
@@ -205,6 +191,7 @@
                     <button type="button" class="cs-btn-secondary" data-dist-adjust-open>
                         <i class="fas fa-random" aria-hidden="true"></i> Adjust distribution
                     </button>
+                    @unless($isPendDis)
                     <div class="cs-dist-download-wrap cs-dist-download-wrap-inline">
                         <button type="button" class="cs-btn-secondary cs-dist-download-toggle" data-dist-download-toggle aria-expanded="false" aria-haspopup="true">
                             <i class="fas fa-download" aria-hidden="true"></i> Download
@@ -222,6 +209,7 @@
                     <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
                         <i class="fas fa-envelope" aria-hidden="true"></i> Email
                     </button>
+                    @endunless
                     @if($canCloseCase ?? false)
                     <button type="button" class="cs-btn-primary cs-btn-close-case" data-case-close-open>
                         <i class="fas fa-check-circle" aria-hidden="true"></i> Close case
@@ -235,6 +223,7 @@
             @else
             <aside class="cs-distribute-page-actions cs-distribute-page-actions-readonly" aria-label="Distribution actions">
                 <div class="cs-distribute-page-action-buttons">
+                    @unless($isPendDis)
                     <div class="cs-dist-download-wrap cs-dist-download-wrap-inline">
                         <button type="button" class="cs-btn-secondary cs-dist-download-toggle" data-dist-download-toggle aria-expanded="false" aria-haspopup="true">
                             <i class="fas fa-download" aria-hidden="true"></i> Download
@@ -252,6 +241,7 @@
                     <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
                         <i class="fas fa-envelope" aria-hidden="true"></i> Email
                     </button>
+                    @endunless
                     @if($canCloseCase ?? false)
                     <button type="button" class="cs-btn-primary cs-btn-close-case" data-case-close-open>
                         <i class="fas fa-check-circle" aria-hidden="true"></i> Close case
