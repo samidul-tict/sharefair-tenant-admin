@@ -477,6 +477,22 @@ class ShareFairApiService
     }
 
     /**
+     * Attorney rewind from PEND_DIS: case -> PEND_INT, PL/DEF/DEL -> DATA_COC.
+     */
+    public function rewindUnresolvedToInventory(int $caseId): array
+    {
+        $payload = $this->request(
+            fn (PendingRequest $client) => $client->asJson()->patch("/cases/{$caseId}/user/status", [
+                'user_status' => 'DATA_COC',
+            ])
+        );
+
+        $this->forgetDistributePreviewCache($caseId);
+
+        return $payload;
+    }
+
+    /**
      * Stream an item image from the Share Fair API (auth + R2/legacy proxy).
      */
     public function proxyItemImage(int $caseId, int $itemId)

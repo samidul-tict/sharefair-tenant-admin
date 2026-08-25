@@ -1127,6 +1127,38 @@ class CaseController extends Controller
     }
 
     /**
+     * Return a PEND_DIS case to inventory so parties can resolve unresolved assets.
+     */
+    public function rewindUnresolvedToInventory(int $id, ShareFairApiService $shareFairApi)
+    {
+        $case = $this->findAccessibleCase($id);
+        $this->assertCanDistribute($case);
+
+        try {
+            $payload = $shareFairApi->rewindUnresolvedToInventory($id);
+        } catch (ShareFairApiException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], $e->status >= 400 && $e->status < 600 ? $e->status : 500);
+        }
+
+        $case->refresh();
+        session()->forget('distribute_adjust.' . $id);
+        session()->flash(
+            'success',
+            $payload['message'] ?? 'The case was returned so parties can resolve unresolved assets.'
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => $payload['message'] ?? 'The case was returned so parties can resolve unresolved assets.',
+            'case_status_value' => $case->case_status_value,
+            'redirect_url' => route('admin.cases.show', $id),
+        ]);
+    }
+
+    /**
      * Ensure attorney assignment payload references this case's marital items and participants.
      *
      * @param  array<int, array{item_id: int, assigned_to_user_id: int, allocation_reason?: string}>  $assignments

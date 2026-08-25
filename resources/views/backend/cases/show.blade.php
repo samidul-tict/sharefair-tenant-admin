@@ -116,7 +116,7 @@
                 <i class="fas fa-balance-scale" aria-hidden="true"></i>
                 <span>
                     <strong>This case is ready for distribution.</strong>
-                    Parties have completed their steps. Review allocations and confirm division.
+                    All the parties have completed their steps. Review the asset details and run the distribution model.
                     <a href="{{ route('admin.cases.distribute.review', $case->id) }}" class="cs-attention-banner-action">Distribute assets</a>
                 </span>
             </div>

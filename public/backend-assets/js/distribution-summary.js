@@ -23,6 +23,34 @@
         });
     }
 
+    function spellCount(n) {
+        n = Math.abs(parseInt(n, 10) || 0);
+        var ones = [
+            'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+            'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+            'seventeen', 'eighteen', 'nineteen',
+        ];
+        var tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+        function underHundred(x) {
+            if (x < 20) return ones[x];
+            var t = Math.floor(x / 10);
+            var o = x % 10;
+            return tens[t] + (o ? '-' + ones[o] : '');
+        }
+        var words;
+        if (n < 100) {
+            words = underHundred(n);
+        } else if (n < 1000) {
+            var h = Math.floor(n / 100);
+            var rest = n % 100;
+            words = ones[h] + ' hundred' + (rest ? ' ' + underHundred(rest) : '');
+        } else {
+            words = String(n);
+        }
+        words = words.charAt(0).toUpperCase() + words.slice(1);
+        return words + ' (' + n + ')';
+    }
+
     function getInitials(name) {
         if (!name) return '?';
         return String(name)
@@ -236,61 +264,25 @@
     }
 
     function renderSummaryStats(d, canConfirm) {
-        var dontWantCount = (d.dont_want_items || []).length;
         var unresolvedCount = (d.unresolved_items || []).length;
         var alert = '';
-        if (unresolvedCount > 0) {
-            if (canConfirm) {
-                alert +=
-                    '<div class="cs-dist-attention-banner cs-dist-attention-banner-static" role="status">' +
-                    '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
-                    '<span>Case can be distributed. Note: <strong>' +
-                    unresolvedCount +
-                    '</strong> item' +
-                    (unresolvedCount === 1 ? ' is' : 's are') +
-                    ' unresolved and will not be included in distribution. You can ' +
-                    '(a) <button type="button" class="cs-dist-attention-inline-link" data-dist-goto-confirm>Select to distribute assets</button>, ' +
-                    'whereby these items will require manual intervention by you or ' +
-                    '(b) <button type="button" class="cs-dist-attention-inline-link" data-dist-request-resolve>Click here</button> ' +
-                    'to request client/spouse to resolve items prior to resubmission for distribution.</span></div>';
-            } else {
-                alert +=
-                    '<button type="button" class="cs-dist-attention-banner" data-dist-goto-unresolved aria-label="View ' +
-                    unresolvedCount +
-                    ' unresolved asset' +
-                    (unresolvedCount === 1 ? '' : 's') +
-                    ' in Unresolved">' +
-                    '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
-                    '<span><strong>' +
-                    unresolvedCount +
-                    '</strong> unresolved asset' +
-                    (unresolvedCount === 1 ? '' : 's') +
-                    ' require attention.' +
-                    ' <span class="cs-dist-attention-banner-action">View Unresolved</span></span></button>';
-            }
-        }
-        if (dontWantCount > 0) {
-            var msg = canConfirm
-                ? ' need attention before you confirm.'
-                : ' require attention.';
+        if (unresolvedCount > 0 && canConfirm) {
             alert +=
-                '<button type="button" class="cs-dist-attention-banner" data-dist-goto-dont-want aria-label="View ' +
-                dontWantCount +
-                ' unclaimed asset' +
-                (dontWantCount === 1 ? '' : 's') +
-                ' in Don\'t Want">' +
-                '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>' +
-                '<span><strong>' +
-                dontWantCount +
-                '</strong> unclaimed asset' +
-                (dontWantCount === 1 ? '' : 's') +
-                msg +
-                ' <span class="cs-dist-attention-banner-action">View Don\'t Want</span></span></button>';
+                '<div class="cs-dist-attention-banner cs-dist-attention-banner-static" role="status">' +
+                '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
+                '<span><strong class="cs-dist-attention-banner-title">Asset Distribution Available</strong>' +
+                spellCount(unresolvedCount) +
+                ' <button type="button" class="cs-dist-attention-inline-link" data-dist-goto-unresolved>unresolved asset' +
+                (unresolvedCount === 1 ? '' : 's') +
+                '</button>' +
+                ' will be excluded from this distribution. You may proceed with the asset distribution and manually adjust these assets on the subsequent screen, or ' +
+                '<button type="button" class="cs-dist-attention-inline-link" data-dist-request-resolve>click the link</button> ' +
+                'to request resolution from the client or spouse prior to final submission.</span></div>';
         }
 
         return (
             alert +
-            '<div class="cs-dist-stat-tile"><span class="cs-dist-stat-label">Assets</span><span class="cs-dist-stat-value">' +
+            '<div class="cs-dist-stat-tile"><span class="cs-dist-stat-label">Assets ready for distribution</span><span class="cs-dist-stat-value">' +
             esc(d.item_count != null ? d.item_count : '—') +
             '</span></div>' +
             '<div class="cs-dist-stat-tile"><span class="cs-dist-stat-label">Total value</span><span class="cs-dist-stat-value">' +
@@ -316,6 +308,7 @@
         var pageScope = rootEl.closest('.cs-distribute-page') || document;
         var previewUrl = rootEl.getAttribute('data-preview-url');
         var distributeUrl = rootEl.getAttribute('data-distribute-url');
+        var rewindUrl = rootEl.getAttribute('data-rewind-url');
         var adjustDraftUrl = rootEl.getAttribute('data-adjust-draft-url');
         var emailUrl = rootEl.getAttribute('data-email-url');
         var successUrl = rootEl.getAttribute('data-success-url');
@@ -341,13 +334,15 @@
         var adjustSearchStatus = rootEl.querySelector('[data-dist-adjust-search-status]');
         var statsEl = rootEl.querySelector('[data-dist-stats]');
         var confirmBtn = rootEl.querySelector('[data-dist-confirm]');
-        var reviewCheckbox = rootEl.querySelector('[data-dist-reviewed]');
-        var unresolvedNoticeEl = rootEl.querySelector('[data-dist-unresolved-notice]');
         var unresolvedModal = pageScope.querySelector('[data-dist-unresolved-modal]');
         var unresolvedModalLead = pageScope.querySelector('[data-dist-unresolved-modal-lead]');
         var unresolvedProceedBtn = pageScope.querySelector('[data-dist-unresolved-proceed]');
+        var rewindModal = pageScope.querySelector('[data-dist-rewind-modal]');
+        var rewindStatusEl = pageScope.querySelector('[data-dist-rewind-status]');
+        var rewindConfirmBtn = pageScope.querySelector('[data-dist-rewind-confirm]');
         var adjustOpenBtn = pageScope.querySelector('[data-dist-adjust-open]');
         var actionsAside = pageScope.querySelector('.cs-distribute-page-actions');
+        var summaryHeadingEl = pageScope.querySelector('[data-dist-summary-heading]');
         var previewOk = false;
         var currentData = null;
         var pendingAssignments = null;
@@ -365,55 +360,92 @@
 
         function updateConfirmState() {
             if (!confirmBtn) return;
-            var reviewed = reviewCheckbox ? reviewCheckbox.checked : true;
-            confirmBtn.disabled = !(previewOk && reviewed);
+            confirmBtn.disabled = !previewOk;
             confirmBtn.removeAttribute('title');
-            updateUnresolvedNotice();
         }
 
         function unresolvedItemCount() {
             return (currentData && (currentData.unresolved_items || []).length) || 0;
         }
 
-        function updateUnresolvedNotice() {
-            if (!unresolvedNoticeEl || !canConfirm) return;
-            var unresolvedCount = unresolvedItemCount();
-            if (!unresolvedCount) {
-                unresolvedNoticeEl.hidden = true;
-                unresolvedNoticeEl.textContent = '';
-                return;
-            }
-            unresolvedNoticeEl.hidden = false;
-            unresolvedNoticeEl.innerHTML =
-                '<i class="fas fa-hourglass-half" aria-hidden="true"></i>' +
-                '<span>Case can be distributed. Note: <strong>' +
-                unresolvedCount +
-                '</strong> item' +
-                (unresolvedCount === 1 ? ' is' : 's are') +
-                ' unresolved and will not be included in distribution. You can ' +
-                '(a) <button type="button" class="cs-dist-unresolved-notice-link" data-dist-goto-confirm>Select to distribute assets</button>, ' +
-                'whereby these items will require manual intervention by you or ' +
-                '(b) <button type="button" class="cs-dist-unresolved-notice-link" data-dist-request-resolve>Click here</button> ' +
-                'to request client/spouse to resolve items prior to resubmission for distribution.</span>';
-        }
-
         function goToConfirmActions() {
             if (!actionsAside) return;
             actionsAside.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            if (reviewCheckbox && typeof reviewCheckbox.focus === 'function') {
-                reviewCheckbox.focus();
-            } else if (confirmBtn && typeof confirmBtn.focus === 'function') {
+            if (confirmBtn && typeof confirmBtn.focus === 'function') {
                 confirmBtn.focus();
             }
         }
 
-        function openRequestResolveEmail() {
-            var emailOpenBtn = pageScope.querySelector('[data-dist-email-open]');
-            if (emailOpenBtn) {
-                emailOpenBtn.click();
-                return;
+        function openRewindConfirmModal() {
+            if (!rewindModal) return;
+            if (rewindStatusEl) {
+                rewindStatusEl.hidden = true;
+                rewindStatusEl.textContent = '';
             }
-            goToUnresolvedTab();
+            if (rewindConfirmBtn) {
+                rewindConfirmBtn.disabled = false;
+                rewindConfirmBtn.innerHTML =
+                    '<i class="fas fa-check" aria-hidden="true"></i> Confirm';
+            }
+            rewindModal.hidden = false;
+            if (rewindConfirmBtn && typeof rewindConfirmBtn.focus === 'function') {
+                rewindConfirmBtn.focus();
+            }
+        }
+
+        function closeRewindConfirmModal() {
+            if (!rewindModal) return;
+            rewindModal.hidden = true;
+        }
+
+        function submitRewind() {
+            if (!rewindUrl || !rewindConfirmBtn) return;
+            rewindConfirmBtn.disabled = true;
+            rewindConfirmBtn.textContent = 'Returning…';
+            if (rewindStatusEl) {
+                rewindStatusEl.hidden = true;
+                rewindStatusEl.textContent = '';
+            }
+
+            fetch(rewindUrl, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({}),
+            })
+                .then(function (res) {
+                    return res.json().then(function (data) {
+                        return { ok: res.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (!result.ok || !result.data.status) {
+                        rewindConfirmBtn.disabled = false;
+                        rewindConfirmBtn.innerHTML =
+                            '<i class="fas fa-check" aria-hidden="true"></i> Confirm';
+                        if (rewindStatusEl) {
+                            rewindStatusEl.hidden = false;
+                            rewindStatusEl.textContent =
+                                (result.data && result.data.message) ||
+                                'Unable to return this case to parties.';
+                        }
+                        return;
+                    }
+                    window.location.href = result.data.redirect_url || successUrl;
+                })
+                .catch(function () {
+                    rewindConfirmBtn.disabled = false;
+                    rewindConfirmBtn.innerHTML =
+                        '<i class="fas fa-check" aria-hidden="true"></i> Confirm';
+                    if (rewindStatusEl) {
+                        rewindStatusEl.hidden = false;
+                        rewindStatusEl.textContent = 'Unable to return this case to parties.';
+                    }
+                });
         }
 
         function openUnresolvedConfirmModal(unresolvedCount) {
@@ -462,7 +494,7 @@
                 .then(function (result) {
                     if (!result.ok || !result.data.status) {
                         confirmBtn.disabled = false;
-                        confirmBtn.textContent = 'Confirm division';
+                        confirmBtn.textContent = 'Run Distribution Model';
                         showError((result.data && result.data.message) || 'Distribution failed.');
                         return;
                     }
@@ -470,7 +502,7 @@
                 })
                 .catch(function () {
                     confirmBtn.disabled = false;
-                    confirmBtn.textContent = 'Confirm division';
+                    confirmBtn.textContent = 'Run Distribution Model';
                     showError('Distribution failed. Please try again.');
                 });
         }
@@ -538,19 +570,6 @@
             });
         }
 
-        function goToDontWantTab() {
-            setDistTab('dont_want');
-            var tabBtn = rootEl.querySelector('[data-dist-tab="dont_want"]');
-            var panel = rootEl.querySelector('[data-dist-panel="dont_want"]');
-            var target = tabBtn || panel;
-            if (target && typeof target.scrollIntoView === 'function') {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-            if (tabBtn && typeof tabBtn.focus === 'function') {
-                tabBtn.focus({ preventScroll: true });
-            }
-        }
-
         function goToUnresolvedTab() {
             setDistTab('unresolved');
             var tabBtn = rootEl.querySelector('[data-dist-tab="unresolved"]');
@@ -610,7 +629,7 @@
                 } else {
                     allocationsPanel.innerHTML =
                         renderReasonKey() +
-                        '<h3 class="cs-dist-panel-title"><i class="fas fa-tags" aria-hidden="true"></i> Allocations</h3>' +
+                        '<h3 class="cs-dist-panel-title"><i class="fas fa-tags" aria-hidden="true"></i> Participants</h3>' +
                         '<div class="cs-dist-alloc-list cs-dist-allocation-board">' +
                         allocEntries
                             .map(function (entry, i) {
@@ -814,14 +833,7 @@
             updateTabCounts(currentData);
             renderPanels(currentData);
             bindItemToggles();
-
-            var defaultTab = 'allocations';
-            if (canConfirm && (currentData.unresolved_items || []).length > 0) {
-                defaultTab = 'unresolved';
-            } else if (canConfirm && (currentData.dont_want_items || []).length > 0) {
-                defaultTab = 'dont_want';
-            }
-            setDistTab(defaultTab);
+            setDistTab('allocations');
 
             if (summaryRoot) summaryRoot.hidden = false;
             previewOk = true;
@@ -1257,6 +1269,7 @@
             }
             refreshAdjustTarget();
             if (summaryRoot) summaryRoot.hidden = true;
+            if (summaryHeadingEl) summaryHeadingEl.hidden = true;
             if (actionsAside) actionsAside.hidden = true;
             adjustRoot.hidden = false;
             renderAdjustBoard();
@@ -1266,6 +1279,7 @@
         function closeAdjustMode(restoreSummary) {
             if (adjustRoot) adjustRoot.hidden = true;
             if (actionsAside) actionsAside.hidden = false;
+            if (summaryHeadingEl) summaryHeadingEl.hidden = false;
             if (restoreSummary && summaryRoot) summaryRoot.hidden = false;
             adjustState = null;
             adjustSearchTerm = '';
@@ -1373,7 +1387,6 @@
             }
             if (summaryRoot) summaryRoot.hidden = true;
             if (adjustRoot) adjustRoot.hidden = true;
-            if (reviewCheckbox) reviewCheckbox.checked = false;
 
             fetch(previewUrl, {
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -1409,11 +1422,6 @@
         });
 
         pageScope.addEventListener('click', function (e) {
-            if (e.target && e.target.closest('[data-dist-goto-dont-want]')) {
-                e.preventDefault();
-                goToDontWantTab();
-                return;
-            }
             if (e.target && e.target.closest('[data-dist-goto-unresolved]')) {
                 e.preventDefault();
                 goToUnresolvedTab();
@@ -1426,13 +1434,9 @@
             }
             if (e.target && e.target.closest('[data-dist-request-resolve]')) {
                 e.preventDefault();
-                openRequestResolveEmail();
+                openRewindConfirmModal();
             }
         });
-
-        if (reviewCheckbox && canConfirm) {
-            reviewCheckbox.addEventListener('change', updateConfirmState);
-        }
 
         if (adjustOpenBtn && canAdjust) {
             adjustOpenBtn.addEventListener('click', openAdjustMode);
@@ -1469,6 +1473,20 @@
         var adjustApplyBtn = rootEl.querySelector('[data-dist-adjust-apply]');
         if (adjustCancelBtn) adjustCancelBtn.addEventListener('click', cancelAdjustments);
         if (adjustApplyBtn) adjustApplyBtn.addEventListener('click', applyAdjustments);
+
+        if (rewindModal && canConfirm) {
+            rewindModal.querySelectorAll('[data-dist-rewind-cancel]').forEach(function (btn) {
+                btn.addEventListener('click', closeRewindConfirmModal);
+            });
+            if (rewindConfirmBtn) {
+                rewindConfirmBtn.addEventListener('click', submitRewind);
+            }
+            pageScope.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && rewindModal && !rewindModal.hidden) {
+                    closeRewindConfirmModal();
+                }
+            });
+        }
 
         if (unresolvedModal && canConfirm) {
             unresolvedModal.querySelectorAll('[data-dist-unresolved-cancel]').forEach(function (btn) {

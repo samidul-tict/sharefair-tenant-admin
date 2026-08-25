@@ -1234,7 +1234,6 @@ a.text-info:hover {
 }
 .cs-distribute-page-lead {
     margin: 0;
-    max-width: 42rem;
     font-size: 0.9375rem;
     color: var(--cs-text-secondary);
     line-height: 1.55;
@@ -1309,6 +1308,11 @@ a.text-info:hover {
     background: rgba(245, 158, 11, 0.1);
     border-color: rgba(245, 158, 11, 0.35);
 }
+.cs-dist-attention-banner-title {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-weight: 800;
+}
 .cs-dist-attention-inline-link {
     display: inline;
     margin: 0;
@@ -1350,35 +1354,6 @@ a.text-info:hover {
 .cs-dist-unresolved-icon {
     background: rgba(100, 116, 139, 0.12);
     color: #475569;
-}
-.cs-dist-unresolved-notice {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    margin: 0 0 0.85rem;
-    padding: 0.75rem 0.9rem;
-    border-radius: 10px;
-    border: 1px solid rgba(245, 158, 11, 0.35);
-    background: rgba(245, 158, 11, 0.1);
-    color: #92400e;
-    font-size: 0.875rem;
-    line-height: 1.45;
-}
-.cs-dist-unresolved-notice-link {
-    display: inline;
-    margin: 0;
-    padding: 0;
-    border: none;
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-weight: 700;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    cursor: pointer;
-}
-.cs-dist-unresolved-notice-link:hover {
-    color: #0f172a;
 }
 
 /* Shared attorney attention cues (dashboard, cases list, case show) */
@@ -1510,19 +1485,6 @@ a.text-info:hover {
     box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
     backdrop-filter: blur(8px);
     overflow: visible;
-}
-.cs-distribute-review-check {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    margin: 0 0 0.85rem;
-    font-size: 0.875rem;
-    color: var(--cs-text);
-    cursor: pointer;
-}
-.cs-distribute-review-check input {
-    margin-top: 0.15rem;
-    flex-shrink: 0;
 }
 .cs-distribute-page-action-buttons {
     display: flex;

@@ -1,11 +1,13 @@
 @extends('backend.layout.inner-app')
-@section('title', 'Distribution Summary | Share Fair')
-@section('proxima')
 
 @php
-    $caseTypeName = $case->caseType?->name ?? $case->case_type_value;
     $caseStatusName = $case->caseStatus?->name ?? ($case->case_status_value ?? 'N/A');
+    $isPendDis = ($case->case_status_value ?? '') === 'PEND_DIS';
+    $summaryPageTitle = $isPendDis ? 'Pre Distribution summary' : 'Distribution summary';
 @endphp
+
+@section('title', $summaryPageTitle . ' | Share Fair')
+@section('proxima')
 
 <div class="case-show-modern cs-distribute-page">
     <div class="cs-container">
@@ -16,7 +18,7 @@
             <span class="cs-breadcrumb-sep" aria-hidden="true">/</span>
             <a href="{{ route('admin.cases.show', $case->id) }}">{{ $case->case_number }}</a>
             <span class="cs-breadcrumb-sep" aria-hidden="true">/</span>
-            <span class="cs-breadcrumb-current">Distribution summary</span>
+            <span class="cs-breadcrumb-current">{{ $summaryPageTitle }}</span>
         </nav>
 
         @if (session('error'))
@@ -26,7 +28,6 @@
         <div class="cs-header cs-distribute-page-header">
             <div class="cs-case-title">
                 <div class="cs-case-number">{{ $case->case_number }}</div>
-                <div class="cs-case-type-badge">{{ $caseTypeName }}</div>
                 <div class="cs-case-status-badge">
                     <span class="cs-status-dot" aria-hidden="true"></span>
                     {{ $caseStatusName }}
@@ -58,18 +59,19 @@
 
         <div class="cs-distribute-page-intro">
             <div class="cs-dist-email-toast" data-dist-email-toast hidden role="status"></div>
-            <h1 class="cs-distribute-page-title">Distribution summary</h1>
-            <p class="cs-distribute-page-lead">
-                @if($canConfirmDistribute ?? false)
-                    Review the proposed allocation below. When you are satisfied, acknowledge the review and confirm division.
-                    This action cannot be undone.
-                @elseif($canAdjustDistribute ?? false)
-                    Assets have been distributed and this case is pending approval.
-                    You can adjust marital asset assignments between participants if needed.
-                @else
-                    Review how assets are allocated across participants for this case.
+            <div data-dist-summary-heading>
+                <h1 class="cs-distribute-page-title">{{ $summaryPageTitle }}</h1>
+                @if(!($canConfirmDistribute ?? false))
+                <p class="cs-distribute-page-lead">
+                    @if($canAdjustDistribute ?? false)
+                        Assets have been distributed and this case is pending approval.
+                        You can adjust marital asset assignments between participants if needed.
+                    @else
+                        Review how assets are allocated across participants for this case.
+                    @endif
+                </p>
                 @endif
-            </p>
+            </div>
             @if($showDistributionCaps ?? false)
             <div class="cs-dist-value-caps" aria-label="Distribution value caps">
                 <div class="cs-dist-value-cap-item">
@@ -101,6 +103,7 @@
             class="cs-distribute-page-app"
             data-preview-url="{{ route('admin.cases.distribute.preview', $case->id) }}"
             data-distribute-url="{{ route('admin.cases.distribute', $case->id) }}"
+            data-rewind-url="{{ route('admin.cases.distribute.rewind', $case->id) }}"
             data-adjust-draft-url="{{ route('admin.cases.distribute.adjustDraft', $case->id) }}"
             data-email-url="{{ route('admin.cases.distribute.email', $case->id) }}"
             data-success-url="{{ route('admin.cases.show', ['id' => $case->id, 'distributed' => 1]) }}"
@@ -122,7 +125,7 @@
                 </div>
 
                 <div class="cs-dist-summary-tabs" role="tablist" aria-label="Distribution view">
-                    <button type="button" class="cs-dist-tab is-active" role="tab" id="dist-tab-allocations" aria-selected="true" aria-controls="dist-panel-allocations" data-dist-tab="allocations" data-dist-tab-label="Allocations">Allocations</button>
+                    <button type="button" class="cs-dist-tab is-active" role="tab" id="dist-tab-allocations" aria-selected="true" aria-controls="dist-panel-allocations" data-dist-tab="allocations" data-dist-tab-label="Participants">Participants</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-warning" role="tab" id="dist-tab-non_marital" aria-selected="false" aria-controls="dist-panel-non_marital" data-dist-tab="non_marital" data-dist-tab-label="Non-marital">Non-marital</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-danger" role="tab" id="dist-tab-dont_want" aria-selected="false" aria-controls="dist-panel-dont_want" data-dist-tab="dont_want" data-dist-tab-label="Don't Want">Don't Want</button>
                     <button type="button" class="cs-dist-tab cs-dist-tab-success" role="tab" id="dist-tab-donations" aria-selected="false" aria-controls="dist-panel-donations" data-dist-tab="donations" data-dist-tab-label="Donations">Donations</button>
@@ -142,7 +145,7 @@
                 <div class="cs-dist-adjust-header">
                     <div>
                         <h2 class="cs-dist-adjust-title">Adjust distribution</h2>
-                        <p class="cs-dist-adjust-lead">Drag assets between participants or from Available marital assets (in-progress, rejected, and other listed statuses). Use Move to when needed.</p>
+                        <p class="cs-dist-adjust-lead">The initial distribution of assets has been executed, and the case remains pending approval. Marital asset assignments may be adjusted between the parties as required. Line items can be reassigned by dragging assets between participants, or by selecting from the available pool of marital assets (including in-progress, rejected, or unallocated statuses). Alternatively, the &ldquo;Move To&rdquo; function may be utilized.</p>
                     </div>
                     <div class="cs-dist-adjust-actions">
                         <button type="button" class="cs-btn-secondary" data-dist-adjust-cancel>Cancel</button>
@@ -173,11 +176,7 @@
 
             @if($canConfirmDistribute ?? false)
             <aside class="cs-distribute-page-actions" aria-label="Distribution actions">
-                <div class="cs-dist-unresolved-notice" data-dist-unresolved-notice hidden role="alert"></div>
-                <label class="cs-distribute-review-check">
-                    <input type="checkbox" data-dist-reviewed>
-                    <span>I have reviewed the proposed allocations and understand this action cannot be undone.</span>
-                </label>
+                <p class="cs-dist-adjust-hint">A preliminary asset allocation will be generated based on the selected methodology. All line items can be manually adjusted for both the client and spouse on the subsequent screen prior to finalization.</p>
                 <div class="cs-distribute-page-action-buttons">
                     <div class="cs-dist-download-wrap cs-dist-download-wrap-inline">
                         <button type="button" class="cs-btn-secondary cs-dist-download-toggle" data-dist-download-toggle aria-expanded="false" aria-haspopup="true">
@@ -196,8 +195,7 @@
                     <button type="button" class="cs-btn-secondary cs-dist-email-open" data-dist-email-open>
                         <i class="fas fa-envelope" aria-hidden="true"></i> Email
                     </button>
-                    <a href="{{ route('admin.cases.show', $case->id) }}" class="cs-btn-secondary">Cancel</a>
-                    <button type="button" class="cs-btn-primary cs-btn-distribute-confirm" data-dist-confirm disabled>Confirm division</button>
+                    <button type="button" class="cs-btn-primary cs-btn-distribute-confirm" data-dist-confirm disabled>Run Distribution Model</button>
                 </div>
             </aside>
             @elseif($canAdjustDistribute ?? false)
@@ -297,7 +295,39 @@
             <button type="button" class="cs-btn-secondary" data-dist-unresolved-cancel>Review unresolved</button>
             <button type="button" class="cs-btn-primary" data-dist-unresolved-proceed>
                 <i class="fas fa-check" aria-hidden="true"></i>
-                Confirm division anyway
+                Distribute anyway
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="cs-dist-email-modal cs-dist-unresolved-modal" data-dist-rewind-modal hidden>
+    <div class="cs-dist-email-backdrop" data-dist-rewind-cancel></div>
+    <div class="cs-dist-email-dialog cs-dist-unresolved-dialog" role="dialog" aria-modal="true" aria-labelledby="distRewindTitle" aria-describedby="distRewindDescription">
+        <div class="cs-dist-email-header">
+            <div class="cs-case-close-heading">
+                <span class="cs-case-close-icon cs-dist-unresolved-icon" aria-hidden="true">
+                    <i class="fas fa-undo"></i>
+                </span>
+                <div>
+                    <h2 id="distRewindTitle">Return case to parties?</h2>
+                    <p>Confirm before sending this case back for unresolved assets.</p>
+                </div>
+            </div>
+            <button type="button" class="cs-dist-email-close" data-dist-rewind-cancel aria-label="Close dialog">
+                <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div class="cs-case-close-body" id="distRewindDescription">
+            <p>The case will move to pending inventory. Client, spouse, and delegate users will return to data collection completed so they can resolve outstanding assets.</p>
+            <p>You will return to the case details page after this is confirmed.</p>
+            <p class="cs-dist-email-status" data-dist-rewind-status hidden role="alert"></p>
+        </div>
+        <div class="cs-dist-email-actions">
+            <button type="button" class="cs-btn-secondary" data-dist-rewind-cancel>Cancel</button>
+            <button type="button" class="cs-btn-primary" data-dist-rewind-confirm>
+                <i class="fas fa-check" aria-hidden="true"></i>
+                Confirm
             </button>
         </div>
     </div>
