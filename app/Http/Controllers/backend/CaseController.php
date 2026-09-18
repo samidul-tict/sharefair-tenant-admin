@@ -1408,6 +1408,33 @@ class CaseController extends Controller
             && trim((string) ($row['phone'] ?? '')) === '';
     }
 
+    /**
+     * Client/Spouse may be selected from search or created with name, email, and phone.
+     * Counsel and legal representatives must be selected from search.
+     */
+    private function partyContactIdentityError(array $row, string $roleKey): ?string
+    {
+        if (!empty($row['user_id'])) {
+            return null;
+        }
+
+        $role = $row[$roleKey] ?? '';
+        $isParty = in_array($role, ['PL', 'DEF'], true);
+        $hasManualIdentity = trim((string) ($row['name'] ?? '')) !== ''
+            && trim((string) ($row['email'] ?? '')) !== ''
+            && trim((string) ($row['phone'] ?? '')) !== '';
+
+        if ($isParty && $hasManualIdentity) {
+            return null;
+        }
+
+        if ($isParty) {
+            return 'Search and select an existing client or spouse, or add a new one with full name, email, and phone.';
+        }
+
+        return 'Search and select an existing user.';
+    }
+
     private function mappingToPartyRow(CaseUserMapping $mapping): array
     {
         $user = $mapping->user;
@@ -1564,11 +1591,11 @@ class CaseController extends Controller
     {
         $normalized = [];
         foreach ($rows as $index => $row) {
-            if (!is_array($row)) {
+            if (!is_array($row) || !is_numeric($index)) {
                 continue;
             }
             $slot = (int) $index;
-            if ($slot === 3 && $this->isEmptyPartyRow($row)) {
+            if (($slot === 3 || $slot >= 4) && $this->isEmptyPartyRow($row)) {
                 continue;
             }
             if ($slot >= 4) {
@@ -1993,7 +2020,7 @@ class CaseController extends Controller
         $email = trim((string) ($row['email'] ?? ''));
         if ($email === '') {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'email' => 'Either choose an existing user or enter email, name and phone.',
+                'email' => 'Search and select an existing user.',
             ]);
         }
 
@@ -2598,9 +2625,9 @@ class CaseController extends Controller
                 return;
             }
             foreach ($contacts as $i => $c) {
-                $hasUserId = !empty($c['user_id']);
-                if (!$hasUserId && (empty($c['email']) || empty($c['name']) || empty($c['phone']))) {
-                    $validator->errors()->add("contacts.$i.email", 'Either choose an existing employee or enter email, name and phone.');
+                $identityError = $this->partyContactIdentityError($c, 'role_id');
+                if ($identityError !== null) {
+                    $validator->errors()->add("contacts.$i.email", $identityError);
                 }
             }
             $plaintiffCount = collect($contacts)->where('role_id', 'PL')->count();
@@ -2806,12 +2833,9 @@ class CaseController extends Controller
 
             $users = $this->normalizePartyContactRows($request->input('users', []));
             foreach ($users as $i => $user) {
-                $hasUserId = !empty($user['user_id']);
-                if (!$hasUserId && (empty($user['email']) || empty($user['name']) || empty($user['phone']))) {
-                    $validator->errors()->add(
-                        "users.$i.email",
-                        'Either choose an existing user or enter email, name and phone.'
-                    );
+                $identityError = $this->partyContactIdentityError($user, 'role');
+                if ($identityError !== null) {
+                    $validator->errors()->add("users.$i.email", $identityError);
                 }
             }
 

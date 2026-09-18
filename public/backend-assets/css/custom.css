@@ -3979,6 +3979,23 @@ body.cs-asset-detail-open {
     background: #ffffff;
     color: #475569;
 }
+.case-create-modern .cc-typeahead-add {
+    font-weight: 600;
+    color: var(--cc-accent, #2563eb);
+    cursor: pointer;
+}
+.case-create-modern .cc-typeahead-add:hover,
+.case-create-modern .cc-typeahead-add:focus,
+.case-create-modern .cc-typeahead-add.is-active {
+    background: var(--cc-accent-light, #e0f2fe);
+    color: #0c4a6e;
+}
+.case-create-modern .cc-manual-entry-hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.8125rem;
+    color: #475569;
+    line-height: 1.4;
+}
 .case-create-modern .cc-form-group textarea {
     min-height: 120px;
     resize: vertical;
@@ -4074,6 +4091,12 @@ body.cs-asset-detail-open {
 .case-create-modern .cc-party-block-body {
     padding: 1rem 1.25rem 1.25rem;
     overflow: visible;
+}
+.case-create-modern .cc-party-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-inline-size: 0;
 }
 .case-create-modern .cc-party-fields-row {
     overflow: visible;

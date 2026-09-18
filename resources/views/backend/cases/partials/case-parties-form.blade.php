@@ -11,7 +11,7 @@
 <div class="cc-section-error-wrap{{ $errors->has($fieldPrefix) ? ' cc-has-error' : '' }}">
     <h2 class="cc-section-title">{{ $sectionTitle ?? 'Case Parties & Counsel' }}</h2>
     <p class="cc-section-hint" id="case-parties-desc">
-        {{ $sectionHint ?? 'Enter each party and their counsel in the order used in legal filings. Client and Spouse are required. At least one attorney must be listed for the Client.' }}
+        {{ $sectionHint ?? 'Search and select each party and their counsel. If a client or spouse is not in the list, add them with full name, email, and phone. Counsel must be selected from existing employees. Client and Spouse are required. At least one attorney must be listed for the Client.' }}
     </p>
     @error($fieldPrefix)
         <div class="cc-section-error" role="alert">{{ $message }}</div>
@@ -29,6 +29,7 @@
         'roleValue' => 'PL',
         'row' => $partySlots['client'] ?? [],
         'lockPartyIdentity' => !empty($partySlots['client']['mapping_id'] ?? null),
+        'searchPurpose' => 'party',
         'canRemove' => false,
     ])
 
@@ -45,6 +46,7 @@
         'representsParty' => 'client',
         'row' => $partySlots['client_counsel'] ?? [],
         'lockCounselIdentity' => !$counselEditable,
+        'searchPurpose' => 'counsel',
         'canRemove' => false,
     ])
 
@@ -58,6 +60,7 @@
         'roleValue' => 'DEF',
         'row' => $partySlots['spouse'] ?? [],
         'lockPartyIdentity' => !empty($partySlots['spouse']['mapping_id'] ?? null),
+        'searchPurpose' => 'party',
         'canRemove' => false,
     ])
 
@@ -75,6 +78,7 @@
         'row' => $partySlots['spouse_counsel'] ?? [],
         'optional' => true,
         'lockCounselIdentity' => !$counselEditable,
+        'searchPurpose' => 'counsel',
         'canRemove' => false,
     ])
 
@@ -92,6 +96,7 @@
                     'blockTitle' => 'Additional legal representative',
                     'roleValue' => 'LEGAL_RE',
                     'row' => $additionalRow,
+                    'searchPurpose' => 'counsel',
                     'canRemove' => true,
                 ])
             @endforeach
@@ -112,6 +117,7 @@
         'blockTitle' => 'Additional legal representative',
         'roleValue' => 'LEGAL_RE',
         'row' => [],
+        'searchPurpose' => 'counsel',
         'canRemove' => true,
     ])
 </div>

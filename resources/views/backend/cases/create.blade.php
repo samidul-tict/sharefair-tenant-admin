@@ -149,7 +149,7 @@
                     'counselEditable' => true,
                     'searchUrl' => url(route('admin.users.search')),
                     'sectionTitle' => 'Case Parties & Counsel',
-                    'sectionHint' => 'Enter each party and their counsel as they would appear in a legal filing. The Client and Spouse are required, along with at least one attorney for the Client. Additional entries are recorded as legal representatives.',
+                    'sectionHint' => 'Search and select each party and their counsel as they would appear in a legal filing. If a client or spouse is not found, add them with full name, email, and phone. Counsel must be selected from existing employees. The Client and Spouse are required, along with at least one attorney for the Client.',
                 ])
 
                 <div class="cc-form-actions">

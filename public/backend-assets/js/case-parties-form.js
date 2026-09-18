@@ -99,6 +99,97 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
+    function isPartySearchBlock(block) {
+        return block && block.getAttribute('data-search-purpose') === 'party';
+    }
+
+    function setIdentityEditable(block, editable) {
+        var els = getTypeaheadElements(block);
+        ['nameInput', 'emailInput', 'phoneInput'].forEach(function (key) {
+            var input = els[key];
+            if (!input) return;
+            if (editable) {
+                input.removeAttribute('readonly');
+                input.removeAttribute('aria-readonly');
+                input.classList.remove('cc-field-locked');
+            } else {
+                input.setAttribute('readonly', 'readonly');
+                input.setAttribute('aria-readonly', 'true');
+                input.classList.add('cc-field-locked');
+            }
+        });
+        if (els.nameInput) els.nameInput.placeholder = editable ? 'Enter full name' : 'Filled from selected user';
+        if (els.emailInput) els.emailInput.placeholder = editable ? 'email@example.com' : 'Filled from selected user';
+        if (els.phoneInput) els.phoneInput.placeholder = editable ? '(123) 456-7890' : 'Filled from selected user';
+        var hint = block.querySelector('[data-manual-entry-hint]');
+        if (hint) hint.hidden = !editable;
+        if (editable) {
+            block.setAttribute('data-manual-entry', '1');
+        } else {
+            block.removeAttribute('data-manual-entry');
+        }
+    }
+
+    function guessManualPrefill(query) {
+        var val = (query || '').trim();
+        if (val.indexOf('@') !== -1) {
+            return { name: '', email: val, phone: '' };
+        }
+        var digits = val.replace(/\D+/g, '');
+        var stripped = val.replace(/[\s().+\-]/g, '');
+        if (digits.length >= 7 && digits === stripped) {
+            return { name: '', email: '', phone: val };
+        }
+        return { name: val, email: '', phone: '' };
+    }
+
+    function startManualPartyEntry(inputEl) {
+        var block = inputEl.closest('.cc-party-block');
+        if (!block || !isPartySearchBlock(block) || block.getAttribute('data-lock-party') === '1') return;
+        var els = getTypeaheadElements(block);
+        var prefill = guessManualPrefill(inputEl.value);
+        if (els.userIdInput) els.userIdInput.value = '';
+        if (els.nameInput) els.nameInput.value = prefill.name;
+        if (els.emailInput) els.emailInput.value = prefill.email;
+        if (els.phoneInput) els.phoneInput.value = prefill.phone;
+        setIdentityEditable(block, true);
+        if (els.resultsEl) {
+            els.resultsEl.innerHTML = '';
+            updateComboboxExpanded(inputEl, els.resultsEl, false);
+        }
+        inputEl.removeAttribute('aria-activedescendant');
+        var idx = inputEl.getAttribute('data-contact-index');
+        if (idx) typeaheadState[idx] = { activeIndex: -1, items: [] };
+        updateLegalCaptions();
+        if (prefill.email && els.nameInput) {
+            els.nameInput.focus();
+        } else if (prefill.phone && els.nameInput) {
+            els.nameInput.focus();
+        } else if (els.emailInput) {
+            els.emailInput.focus();
+        }
+    }
+
+    function appendAddNewOption(inputEl, resultsEl) {
+        var block = inputEl.closest('.cc-party-block');
+        if (!block || !isPartySearchBlock(block) || block.getAttribute('data-lock-party') === '1') return;
+        var title = block.getAttribute('data-add-new-label') || 'Add new client';
+        var btn = document.createElement('div');
+        btn.className = 'cc-typeahead-item cc-typeahead-add';
+        btn.id = (resultsEl.id || 'results') + '_add_new';
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-selected', 'false');
+        btn.dataset.action = 'add-new';
+        btn.textContent = title;
+        btn.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+        });
+        btn.addEventListener('click', function () {
+            startManualPartyEntry(inputEl);
+        });
+        resultsEl.appendChild(btn);
+    }
+
     function wireTypeaheadCombobox(block) {
         var searchInput = block.querySelector('.cc-user-search-input');
         var resultsEl = block.querySelector('.cc-typeahead-results');
@@ -132,13 +223,19 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function selectTypeaheadOption(inputEl, optionEl) {
-        if (!optionEl || !optionEl.dataset.id) return;
+        if (!optionEl) return;
+        if (optionEl.dataset.action === 'add-new') {
+            startManualPartyEntry(inputEl);
+            return;
+        }
+        if (!optionEl.dataset.id) return;
         var block = inputEl.closest('.cc-party-block');
         var els = getTypeaheadElements(block);
         if (els.userIdInput) els.userIdInput.value = optionEl.dataset.id;
         if (els.emailInput) els.emailInput.value = optionEl.dataset.email || '';
         if (els.nameInput) els.nameInput.value = optionEl.dataset.name || '';
         if (els.phoneInput) els.phoneInput.value = optionEl.dataset.phone || '';
+        setIdentityEditable(block, false);
         inputEl.value = (optionEl.dataset.name || '') + ' (' + (optionEl.dataset.email || '') + ')';
         if (els.resultsEl) {
             els.resultsEl.innerHTML = '';
@@ -161,7 +258,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (!users || users.length === 0) {
             resultsEl.innerHTML = '<div class="cc-typeahead-item cc-typeahead-empty" role="status">No users found</div>';
+            appendAddNewOption(inputEl, resultsEl);
             updateComboboxExpanded(inputEl, resultsEl, true);
+            if (resultsEl.querySelector('[data-action="add-new"]')) {
+                highlightTypeaheadOption(inputEl, 0);
+            }
             return;
         }
 
@@ -196,6 +297,9 @@ document.addEventListener('DOMContentLoaded', function () {
             var article = temp.querySelector('.cc-party-block') || temp.firstElementChild;
             if (article) {
                 article.setAttribute('data-contact-index', String(index));
+                article.querySelectorAll('input, select, textarea, fieldset').forEach(function (el) {
+                    el.removeAttribute('disabled');
+                });
                 wireTypeaheadCombobox(article);
                 return article;
             }
@@ -222,6 +326,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (els.emailInput) els.emailInput.value = '';
                 if (els.nameInput) els.nameInput.value = '';
                 if (els.phoneInput) els.phoneInput.value = '';
+                setIdentityEditable(block, false);
                 updateLegalCaptions();
             }
             return;
@@ -229,7 +334,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         clearTimeout(typeaheadTimeouts[idx]);
         typeaheadTimeouts[idx] = setTimeout(function () {
-            fetch(searchUrl + '?q=' + encodeURIComponent(val), {
+            var purpose = block.getAttribute('data-search-purpose') || 'counsel';
+            fetch(searchUrl + '?q=' + encodeURIComponent(val) + '&purpose=' + encodeURIComponent(purpose), {
                 credentials: 'same-origin',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             })
@@ -250,6 +356,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     wrapper.querySelectorAll('.cc-party-block').forEach(wireTypeaheadCombobox);
 
+    var prototype = document.getElementById('casePartyAdditionalPrototype');
+    if (prototype) {
+        prototype.querySelectorAll('input, select, textarea').forEach(function (el) {
+            el.setAttribute('disabled', 'disabled');
+        });
+    }
+
     wrapper.addEventListener('input', function (e) {
         if (e.target && e.target.classList.contains('cc-user-search-input')) {
             onUserSearchInput(e.target);
@@ -263,7 +376,7 @@ document.addEventListener('DOMContentLoaded', function () {
             )
         ) {
             var block = e.target.closest('.cc-party-block');
-            if (block) {
+            if (block && !block.hasAttribute('data-manual-entry')) {
                 var userIdInput = block.querySelector('.cc-user-id-input');
                 var searchInput = block.querySelector('.cc-user-search-input');
                 if (userIdInput && userIdInput.value) {

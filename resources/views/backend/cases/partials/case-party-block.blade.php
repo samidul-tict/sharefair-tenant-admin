@@ -11,13 +11,27 @@
     $canRemove = $canRemove ?? false;
     $isOptional = $optional ?? false;
     $errorPrefix = $fieldPrefix . '.' . $index;
+    $searchPurpose = $searchPurpose ?? 'counsel';
+    $isPartySearch = $searchPurpose === 'party';
+    $searchLabel = $searchLabel ?? ($isPartySearch ? 'Search end client' : 'Search employee or tenant admin');
+    $searchPlaceholder = $searchPlaceholder ?? 'Type name, email, or phone...';
     $searchDisplay = $userId && $name ? $name . ' (' . ($email ?: '') . ')' : '';
+    $isPrototype = (string) $index === '__INDEX__';
+    $isManualEntry = $isPartySearch
+        && !$isLocked
+        && ($userId === '' || $userId === null)
+        && ($name !== '' || $email !== '' || $phone !== '');
+    $identityReadonly = $isLocked || !$isManualEntry;
+    $addNewLabel = $blockType === 'spouse' ? 'Add new spouse' : 'Add new client';
 @endphp
 
 <article
     class="cc-party-block cc-party-block-{{ $blockType }}"
     data-party-block="{{ $blockType }}"
     data-contact-index="{{ $index }}"
+    data-search-purpose="{{ $searchPurpose }}"
+    @if($isPartySearch) data-add-new-label="{{ $addNewLabel }}" @endif
+    @if($isManualEntry) data-manual-entry="1" @endif
     @if($isLocked) data-lock-party="1" @endif
     @if(!empty($mappingId)) data-saved="1" @endif
     @if($isOptional) data-party-optional="1" @endif
@@ -35,6 +49,7 @@
     </header>
 
     <div class="cc-party-block-body">
+        <fieldset class="cc-party-fieldset" @if($isPrototype) disabled @endif>
         @if(!empty($roleValue))
             <input type="hidden" name="{{ $fieldPrefix }}[{{ $index }}][{{ $roleField }}]" value="{{ $roleValue }}">
         @endif
@@ -47,7 +62,7 @@
 
         <div class="cc-form-row cc-party-fields-row">
             <div class="cc-form-group cc-user-search-cell">
-                <label for="{{ $fieldPrefix }}_{{ $index }}_user_search">Search user</label>
+                <label for="{{ $fieldPrefix }}_{{ $index }}_user_search">{{ $searchLabel }}</label>
                 <div class="cc-typeahead-wrap">
                     <input
                         type="text"
@@ -58,14 +73,19 @@
                         aria-autocomplete="list"
                         aria-expanded="false"
                         aria-controls="{{ $fieldPrefix }}_{{ $index }}_results"
-                        placeholder="Type name or email..."
+                        placeholder="{{ $searchPlaceholder }}"
                         value="{{ $searchDisplay }}"
                         autocomplete="off"
-                        aria-label="Search user by name or email"
+                        aria-label="{{ $searchLabel }} by name, email, or phone"
                         @if($isLocked) disabled aria-disabled="true" @endif
                     >
                     <div class="cc-typeahead-results" id="{{ $fieldPrefix }}_{{ $index }}_results" role="listbox" aria-hidden="true"></div>
                 </div>
+                @if($isPartySearch)
+                    <p class="cc-manual-entry-hint" data-manual-entry-hint @unless($isManualEntry) hidden @endunless>
+                        Adding a new {{ $blockType === 'spouse' ? 'spouse' : 'client' }}. Enter their full name, email, and phone below.
+                    </p>
+                @endif
                 <input type="hidden" name="{{ $fieldPrefix }}[{{ $index }}][user_id]" value="{{ $userId }}" class="cc-user-id-input cc-contact-user-id">
             </div>
             <div class="cc-form-group">
@@ -78,10 +98,10 @@
                     id="{{ $fieldPrefix }}_{{ $index }}_name"
                     name="{{ $fieldPrefix }}[{{ $index }}][name]"
                     value="{{ $name }}"
-                    placeholder="Enter full name"
+                    placeholder="{{ $identityReadonly ? 'Filled from selected user' : 'Enter full name' }}"
                     @unless($isOptional) required aria-required="true" @endunless
-                    class="cc-party-name-input @if($isLocked) cc-field-locked @endif @error("{$errorPrefix}.name") cc-is-invalid @enderror"
-                    @if($isLocked) readonly aria-readonly="true" @endif
+                    class="cc-party-name-input @if($identityReadonly) cc-field-locked @endif @error("{$errorPrefix}.name") cc-is-invalid @enderror"
+                    @if($identityReadonly) readonly aria-readonly="true" @endif
                     aria-invalid="{{ $errors->has("{$errorPrefix}.name") ? 'true' : 'false' }}"
                 >
                 @error("{$errorPrefix}.name")
@@ -98,10 +118,11 @@
                     id="{{ $fieldPrefix }}_{{ $index }}_email"
                     name="{{ $fieldPrefix }}[{{ $index }}][email]"
                     value="{{ $email }}"
-                    placeholder="email@example.com"
+                    placeholder="{{ $identityReadonly ? 'Filled from selected user' : 'email@example.com' }}"
                     @unless($isOptional) required aria-required="true" @endunless
                     autocomplete="off"
-                    class="@error("{$errorPrefix}.email") cc-is-invalid @enderror"
+                    class="@if($identityReadonly) cc-field-locked @endif @error("{$errorPrefix}.email") cc-is-invalid @enderror"
+                    @if($identityReadonly) readonly aria-readonly="true" @endif
                     aria-invalid="{{ $errors->has("{$errorPrefix}.email") ? 'true' : 'false' }}"
                 >
                 @error("{$errorPrefix}.email")
@@ -118,10 +139,11 @@
                     id="{{ $fieldPrefix }}_{{ $index }}_phone"
                     name="{{ $fieldPrefix }}[{{ $index }}][phone]"
                     value="{{ $phone }}"
-                    placeholder="(123) 456-7890"
+                    placeholder="{{ $identityReadonly ? 'Filled from selected user' : '(123) 456-7890' }}"
                     @unless($isOptional) required aria-required="true" @endunless
                     inputmode="tel"
-                    class="@error("{$errorPrefix}.phone") cc-is-invalid @enderror"
+                    class="@if($identityReadonly) cc-field-locked @endif @error("{$errorPrefix}.phone") cc-is-invalid @enderror"
+                    @if($identityReadonly) readonly aria-readonly="true" @endif
                     aria-invalid="{{ $errors->has("{$errorPrefix}.phone") ? 'true' : 'false' }}"
                 >
                 @error("{$errorPrefix}.phone")
@@ -157,5 +179,6 @@
                 </div>
             @endif
         </div>
+        </fieldset>
     </div>
 </article>

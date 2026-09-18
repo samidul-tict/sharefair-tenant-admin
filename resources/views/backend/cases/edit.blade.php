@@ -232,7 +232,7 @@
                     'counselEditable' => !($caseEditLocks['legal_hold_only'] ?? false),
                     'searchUrl' => url(route('admin.users.search')),
                     'sectionTitle' => 'Case Parties & Counsel',
-                    'sectionHint' => 'Update each party and their counsel as they would appear in a legal filing. Saved Client and Spouse records cannot be removed or have their identity changed. Counsel for the Client and Spouse may be changed at any time until the case is resolved (RES_COMP). Additional legal representatives can be added or removed.',
+                    'sectionHint' => 'Search and select each party and their counsel as they would appear in a legal filing. If a client or spouse is not found, add them with full name, email, and phone. Saved Client and Spouse records cannot be removed or have their identity changed. Counsel for the Client and Spouse may be changed at any time until the case is resolved (RES_COMP). Additional legal representatives can be added or removed.',
                 ])
                 @endif
 

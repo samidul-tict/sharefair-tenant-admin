@@ -368,7 +368,10 @@ class UserController extends Controller
     }
 
     /**
-     * Search users (whole user table) by name or email for typeahead/assign to case.
+     * Search users by name, email, or phone for case-party typeahead.
+     *
+     * purpose=party  → users with role EC on user_role_mapping (client / spouse)
+     * purpose=counsel → users with EMP or TENANT_A on user_role_mapping (counsel)
      */
     public function search(Request $request)
     {
@@ -379,25 +382,39 @@ class UserController extends Controller
                 return response()->json([])->header('Content-Type', 'application/json');
             }
 
+            $purpose = $request->input('purpose', 'counsel');
+            $purpose = is_string($purpose) ? strtolower(trim($purpose)) : 'counsel';
+            $isPartySearch = $purpose === 'party';
+
             $logUser = User::leftJoin('user_role_mapping as urm', 'users.id', '=', 'urm.user_id')
                 ->where('users.id', Auth::id())
                 ->select('users.*', 'urm.role_value as user_role_id', 'urm.tenant_id')
                 ->first();
 
-            if (!$logUser || !$logUser->tenant_id) {
+            if (!$logUser) {
                 return response()->json([])->header('Content-Type', 'application/json');
             }
 
+            if (!$isPartySearch && !$logUser->tenant_id) {
+                return response()->json([])->header('Content-Type', 'application/json');
+            }
+
+            $roles = $isPartySearch ? ['EC'] : ['EMP', 'TENANT_A'];
             $term = '%' . $q . '%';
             $users = User::select('users.id', 'users.name', 'users.email', 'users.phone_number')
                 ->join('user_role_mapping as urm', 'users.id', '=', 'urm.user_id')
-                ->where('urm.tenant_id', $logUser->tenant_id)
                 ->where('urm.is_active', true)
-                ->whereIn('urm.role_value', ['EMP', 'LEGAL_RE', 'TENANT_A'])
+                ->where('users.is_active', true)
+                ->whereIn('urm.role_value', $roles)
+                ->when(!$isPartySearch, function ($query) use ($logUser) {
+                    $query->where('urm.tenant_id', $logUser->tenant_id);
+                })
                 ->where(function ($query) use ($term) {
                     $query->where('users.name', 'ILIKE', $term)
-                        ->orWhere('users.email', 'ILIKE', $term);
+                        ->orWhere('users.email', 'ILIKE', $term)
+                        ->orWhere('users.phone_number', 'ILIKE', $term);
                 })
+                ->distinct()
                 ->orderBy('users.name')
                 ->limit(25)
                 ->get();
